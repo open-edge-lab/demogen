@@ -1,0 +1,50 @@
+# demogen.example.yaml — copia in demogen.yaml e compila.
+# Le chiavi API si leggono SOLO da variabili d'ambiente (mai scritte qui).
+
+providers:
+  openrouter:
+    type: openrouter                     # base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    headers:                             # opzionali, attribuzione app
+      HTTP-Referer: https://example.local/demogen
+      X-Title: demogen
+  local:
+    type: openai_compatible
+    base_url: http://localhost:8000/v1   # vLLM / llama.cpp server / LM Studio / Ollama
+    api_key_env: LOCAL_API_KEY           # può essere un valore fittizio
+
+roles:
+  orchestrator:
+    provider: openrouter
+    model: "<id-modello>"
+    temperature: 0.7
+    max_tokens: 16000
+    vision: auto                         # auto | true | false
+    json_schema: auto                    # auto | true | false
+    timeout_s: 600
+    extra_body: {}                       # pass-through (es. parametri di reasoning)
+  critic:
+    provider: openrouter
+    model: "<id-modello-vision>"
+    temperature: 0.2
+    vision: true
+  math:
+    provider: openrouter
+    model: "<id-modello-math>"
+    temperature: 0.1
+  fixer:
+    provider: local
+    model: "<id-modello-veloce>"
+    temperature: 0.0
+  composer:
+    inherit: orchestrator
+
+pricing:                                 # usato se il provider non dà il costo
+  "<id-modello>": { prompt_per_mtok: 0.0, completion_per_mtok: 0.0 }
+
+budget:
+  max_iterations_per_scene: 4
+  max_fix_attempts: 3
+  max_total_cost_usd: 5.0
+  max_wall_minutes: 60
+  llm_concurrency: 4

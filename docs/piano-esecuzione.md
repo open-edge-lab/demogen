@@ -120,6 +120,8 @@ Nota: la Fase 3 (livello LLM) è quasi indipendente dal player e può essere svi
 
 **Milestone M3**: test verdi in CI; `models check` (live, manuale) funzionante su OpenRouter e su endpoint locale.
 
+**Stato: ✅ M3 (parte CI) raggiunta.** Livello LLM completo e testato con server OpenAI-compatible finto (nessuna chiamata reale in CI): `config.py` (YAML+env, pydantic, `inherit` ruoli), `providers.py` (openai_compatible/openrouter), `client.py` (retry backoff+jitter su 429/5xx/timeout, log JSON con redazione chiavi/immagini, costo da usage extra o tabella prezzi, `achat` async), `envelope.py` (```json + ```glsl), `structured.py` (3 livelli: json_schema strict → json_object → envelope, con loop di riparazione max 2), `capabilities.py` (catalogo OpenRouter con cache 24 h; default prudente sugli endpoint generici), `budget.py` (costo stimato pre-chiamata, stop anticipato). CLI: `demogen init`, `demogen models check` (testa testo/vision/json_schema per ruolo). Test: 12/12 verdi (valida, JSON malformato+riparazione, 429 con retry, timeout, budget, capabilities+cache, redazione log, init, models check). `models check` live su OpenRouter/locale resta **manuale** (`@pytest.mark.live`).
+
 ---
 
 ### Fase 4 — Metriche, gate e materiale per il critico

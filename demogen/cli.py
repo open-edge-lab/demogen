@@ -14,6 +14,8 @@ from .browser.session import PLAYER_DIR, BrowserSession
 app = typer.Typer(
     help="demogen — generatore offline di demo realtime (motore WebGL2 dual-mode GPU/CPU)"
 )
+models_app = typer.Typer(help="Interroga i modelli configurati")
+app.add_typer(models_app, name="models")
 
 
 def _run(cmd: list[str]) -> str | None:
@@ -179,6 +181,120 @@ def probe(
         for t, ms in prof["samples"].items():
             print(f"  t={t}s  {ms:.3f} ms")
         print(f"PNG salvati in {out}/")
+
+
+@app.command()
+def init(
+    out: Path = typer.Option(Path("demogen.example.yaml"), help="Dove scrivere il template"),
+) -> None:
+    """Scrive il template di configurazione demogen.example.yaml."""
+    src = Path(__file__).resolve().parent / "example.yaml"
+    if out.exists():
+        print(f"{out} esiste già — non sovrascritto.")
+        raise typer.Exit(0)
+    shutil.copy(src, out)
+    print(f"Scritto {out}.")
+    print("Prossimi passi: cp demogen.example.yaml demogen.yaml, imposta provider/modelli,")
+    print("e esporta le chiavi API nelle env (es. OPENROUTER_API_KEY). Poi: demogen models check")
+
+
+@models_app.command("check")
+def models_check(
+    config: Path | None = typer.Option(None, help="Path della config (default: ./demogen.yaml)"),
+    role: str | None = typer.Option(None, help="Testa un solo ruolo"),
+) -> None:
+    """Per ogni ruolo: chiamata minima di testo (+ immagine se vision, + schema se json_schema)."""
+    import base64
+    import io
+
+    from .config import load_config
+    from .llm.budget import Budget
+    from .llm.capabilities import detect_capabilities
+    from .llm.client import LLMClient
+
+    cfg = load_config(config)
+    budget = Budget.from_config(cfg)
+    roles = [role] if role else list(cfg.roles)
+    header = (
+        f"{'ruolo':<14} {'modello':<28} {'testo':<6} {'vision':<7} "
+        f"{'json':<6} {'latenza':<8} {'costo USD'}"
+    )
+    print(header)
+    for r in roles:
+        client = LLMClient(cfg, r, max_retries=1, budget=budget)
+        caps = detect_capabilities(cfg, r, cache_dir=Path(cfg.cache_dir))
+        # 1) testo
+        try:
+            resp = client.chat(
+                [{"role": "user", "content": "Rispondi esattamente: OK"}], step="models-check"
+            )
+            ok_text = "OK" in resp.content
+            lat = f"{resp.latency_s:.2f}s"
+            cost = f"{resp.cost_usd:.6f}" if resp.cost_usd is not None else "-"
+        except Exception as e:  # noqa: BLE001
+            print(f"{r:<14} {client.model:<28} ERRORE testo: {e}")
+            continue
+        # 2) vision: immagine 64x64 rossa
+        ok_vision = "-"
+        if caps.vision:
+            from PIL import Image
+
+            img = Image.new("RGB", (64, 64), (255, 0, 0))
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode()
+            try:
+                vresp = client.chat(
+                    [
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Di che colore è? Rispondi JSON {\"colore\": \"...\"}.",
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                                },
+                            ],
+                        }
+                    ],
+                    step="models-check-vision",
+                )
+                low = vresp.content.lower()
+                ok_vision = "ok" if ("ross" in low or "red" in low) else f"? ({low[:30]!r})"
+            except Exception as e:  # noqa: BLE001
+                ok_vision = f"err: {str(e)[:40]}"
+        # 3) json_schema
+        ok_json = "-"
+        if caps.json_schema:
+            try:
+                client.chat(
+                    [{"role": "user", "content": "Restituisci JSON {\"ok\": true}"}],
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "Ping",
+                            "strict": True,
+                            "schema": {
+                                "type": "object",
+                                "properties": {"ok": {"type": "boolean"}},
+                                "required": ["ok"],
+                                "additionalProperties": False,
+                            },
+                        },
+                    },
+                    step="models-check-json",
+                )
+                ok_json = "ok"
+            except Exception as e:  # noqa: BLE001
+                ok_json = f"err: {str(e)[:40]}"
+        row = (
+            f"{r:<14} {client.model:<28} {'ok' if ok_text else 'NO':<6} "
+            f"{ok_vision:<7} {ok_json:<6} {lat:<8} {cost}"
+        )
+        print(row)
 
 
 if __name__ == "__main__":
