@@ -1,0 +1,15 @@
+{
+  "name": "@demogen/player",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/spike.ts --bundle --format=iife --global-name=demogen --outfile=dist/demogen-spike.js && esbuild src/spike.ts --bundle --format=iife --global-name=demogen --minify --outfile=dist/demogen-spike.min.js",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.5.0"
+  }
+}

@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+player/dist/
+player/.spike-shader.glsl
+out/
+projects/
+.pytest_cache/
+.ruff_cache/

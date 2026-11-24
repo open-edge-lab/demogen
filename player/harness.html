@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>demogen harness</title>
+  <style>
+    html, body { margin: 0; background: #000; }
+    canvas { width: 640px; height: 360px; display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <script src="dist/demogen-spike.js"></script>
+  <script>
+    // Harness (solo pipeline/test): niente rAF, frame a tempi esatti via window.__demogen.
+    fetch("default.glsl")
+      .then((r) => r.text())
+      .then((src) => {
+        const player = new demogen.SpikePlayer(document.getElementById("c"), src);
+        window.__demogen = demogen.installHarness(player);
+      })
+      .catch((e) => {
+        window.__demogen_error = String(e);
+      });
+  </script>
+</body>
+</html>

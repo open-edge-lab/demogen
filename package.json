@@ -1,0 +1,10 @@
+{
+  "name": "demogen",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["player"],
+  "scripts": {
+    "build": "npm run build --workspace player",
+    "test": "npm test --workspace player"
+  }
+}

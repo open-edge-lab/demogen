@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>demogen spike — play</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; }
+    canvas { width: 100vw; height: 100vh; display: block; }
+    #hud { position: fixed; top: 8px; left: 8px; color: #0f0;          font: 12px monospace; white-space: pre; text-shadow: 0 0 4px #000; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="hud">caricamento…</div>
+  <script src="dist/demogen-spike.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const shaderUrl = params.get("shader") || "default.glsl";
+    fetch(shaderUrl)
+      .then((r) => r.text())
+      .then((src) => {
+        const canvas = document.getElementById("c");
+        const player = new demogen.SpikePlayer(canvas, src);
+        const info = demogen.info(player.gl);
+        window.__demogen = demogen.installHarness(player);
+        const hud = document.getElementById("hud");
+        let frames = 0;
+        let last = performance.now();
+        function loop() {
+          player.resize();
+          player.renderAt((performance.now() - player.start) / 1000);
+          frames++;
+          const now = performance.now();
+          if (now - last >= 1000) {
+            hud.textContent =
+              "renderer: " + info.renderer + "\n" +
+              "fps: " + (frames * 1000 / (now - last)).toFixed(1) + "\n" +
+              "size: " + canvas.width + "x" + canvas.height;
+            frames = 0;
+            last = now;
+          }
+          requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+      })
+      .catch((e) => {
+        document.getElementById("hud").textContent = "ERRORE: " + e.message;
+      });
+  </script>
+</body>
+</html>
