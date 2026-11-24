@@ -43,11 +43,51 @@ class BudgetConfig(BaseModel):
     llm_concurrency: int = 4
 
 
+class RealtimeConfig(BaseModel):
+    target_fps: int = 60
+    floor_ratio: float = 0.4  # p95 a qualità minima ≤ floor_ratio × budget p95
+    max_compile_ms_scene: float = 400.0
+    max_compile_ms_total: float = 1500.0
+    max_first_frame_ms: float = 1500.0
+    profile_step_s: float = 0.25
+    # budget ms per profilo: {p95, mean, resolution}
+    profiles: dict[str, dict] = Field(
+        default_factory=lambda: {
+            "modern": {"p95": 6.0, "mean": 4.0, "res": [1920, 1080]},
+            "retro": {"p95": 1.0, "mean": 0.5, "res": [320, 180]},
+        }
+    )
+
+
+class SafetyConfig(BaseModel):
+    flash_max_per_s: int = 3
+    red_flash: bool = True
+
+
+class BundleLimits(BaseModel):
+    max_payload_gz_kb: int = 48
+    max_payload_bytes: int = 1024 * 1024
+    max_scene_bytes: int = 256 * 1024
+
+
+class PreviewConfig(BaseModel):
+    width: int = 480
+    height: int = 270
+    keyframes: int = 16
+    bursts: int = 3
+    burst_len: int = 6
+    fps: int = 60
+
+
 class Config(BaseModel):
     providers: dict[str, ProviderConfig]
     roles: dict[str, RoleConfig]
     pricing: dict[str, dict[str, float]] = Field(default_factory=dict)
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
+    realtime: RealtimeConfig = Field(default_factory=RealtimeConfig)
+    safety: SafetyConfig = Field(default_factory=SafetyConfig)
+    bundle: BundleLimits = Field(default_factory=BundleLimits)
+    preview: PreviewConfig = Field(default_factory=PreviewConfig)
     log_dir: str = ".demogen_logs/llm_calls"
     cache_dir: str = ".demogen_cache"
 

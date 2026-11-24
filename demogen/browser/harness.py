@@ -74,10 +74,20 @@ class Harness:
             {"times": times, "width": width, "height": height, "repeats": repeats},
         )
 
-    def luma_sequence(
+    def cell_sequence(
         self, t0: float, t1: float, fps: int, width: int, height: int
-    ) -> list[list[float]]:
+    ) -> list[list[list[float]]]:
+        """Per ogni frame: 64 celle (8x8) × [r,g,b] medi — per l'analisi flash."""
         return self.page.evaluate(
-            "(o) => window.__demogen.lumaSequence(o)",
+            "(o) => window.__demogen.cellSequence(o)",
             {"t0": t0, "t1": t1, "fps": fps, "width": width, "height": height},
+        )
+
+    def scene_stats(
+        self, times: list[float], width: int, height: int
+    ) -> list[dict]:
+        """Statistiche float (NaN/Inf/luma) per tempo, su FBO RGBA32F."""
+        return self.page.evaluate(
+            "(o) => window.__demogen.stats(o)",
+            {"times": times, "width": width, "height": height},
         )

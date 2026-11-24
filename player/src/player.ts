@@ -154,20 +154,11 @@ export class Player {
     return this.offsetS + (performance.now() - this.startMs) / 1000;
   }
 
-  /** Renderizza un frame al tempo t (deterministico, usato anche dall'harness). */
-  renderFrameAt(t: number, forceQuality?: QualityState): QualityState {
+  private makeEnv(t: number, w: number, h: number, q: QualityState): RenderEnv {
     const p = this.payload;
     const tl = p.timeline as Timeline;
     const st = stateAt(tl, p.meta.loop ? t % this.durationS : Math.min(t, this.durationS));
-    const q = forceQuality ?? this.quality.state;
-    const sceneProfile =
-      p.render.overrides?.[st.sceneId] ?? p.render.profile;
-    const retroRes = p.render.retro?.internal_resolution ?? [320, 180];
-    const cw = this.canvas.width;
-    const ch = this.canvas.height;
-    const w = sceneProfile === "retro" ? retroRes[0] : Math.max(1, Math.round(cw * q.scale));
-    const h = sceneProfile === "retro" ? retroRes[1] : Math.max(1, Math.round(ch * q.scale));
-    const env: RenderEnv = {
+    return {
       t,
       state: st,
       width: w,
@@ -177,6 +168,21 @@ export class Player {
       text: this.text,
       textLen: p.text ? Math.min(256, p.text.length) : 0,
     };
+  }
+
+  /** Renderizza un frame al tempo t (deterministico, usato anche dall'harness). */
+  renderFrameAt(t: number, forceQuality?: QualityState): QualityState {
+    const p = this.payload;
+    const q = forceQuality ?? this.quality.state;
+    const sceneProfile =
+      p.render.overrides?.[stateAt(p.timeline as Timeline, Math.min(t, this.durationS)).sceneId] ??
+      p.render.profile;
+    const retroRes = p.render.retro?.internal_resolution ?? [320, 180];
+    const cw = this.canvas.width;
+    const ch = this.canvas.height;
+    const w = sceneProfile === "retro" ? retroRes[0] : Math.max(1, Math.round(cw * q.scale));
+    const h = sceneProfile === "retro" ? retroRes[1] : Math.max(1, Math.round(ch * q.scale));
+    const env = this.makeEnv(t, w, h, q);
     const { fbo } = this.compositor.render(env, this.progs);
     // blit sul canvas: per retro texture con filtro nearest (pixel netti)
     const gl = this.gl;
@@ -213,6 +219,62 @@ export class Player {
     this.renderFrameAt(t);
     this.gl.finish();
     return this.canvas.toDataURL("image/png");
+  }
+
+  private floatFBO: { fbo: WebGLFramebuffer; tex: WebGLTexture; width: number; height: number } | null =
+    null;
+
+  /**
+   * Statistiche float della scena a tempo t: renderizza in FBO RGBA32F
+   * (EXT_color_buffer_float) e legge NaN/Inf/luma — prima della quantizzazione.
+   */
+  sceneStats(t: number, width?: number, height?: number): Record<string, number> {
+    const gl = this.gl;
+    const ext = gl.getExtension("EXT_color_buffer_float");
+    const w = width ?? this.canvas.width;
+    const h = height ?? this.canvas.height;
+    const p = this.payload;
+    const st = stateAt(p.timeline as Timeline, Math.min(t, this.durationS));
+    const cp = this.progs.get(st.sceneId);
+    if (!cp) throw new Error(`scena ${st.sceneId} non compilata`);
+    if (!ext) {
+      return { nan_ratio: 0, inf_ratio: 0, luma_mean: 0, float_path: 0 };
+    }
+    if (!this.floatFBO) {
+      const tex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      const fbo = gl.createFramebuffer()!;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      this.floatFBO = { fbo, tex, width: w, height: h };
+    } else if (this.floatFBO.width !== w || this.floatFBO.height !== h) {
+      gl.bindTexture(gl.TEXTURE_2D, this.floatFBO.tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, null);
+      this.floatFBO.width = w;
+      this.floatFBO.height = h;
+    }
+    const env = this.makeEnv(t, w, h, { scale: 1, uQuality: 1, bloom: false });
+    this.compositor.drawScene(this.floatFBO as never, cp, env);
+    const buf = new Float32Array(w * h * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.floatFBO.fbo);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT, buf);
+    let nan = 0;
+    let inf = 0;
+    let sum = 0;
+    const n = w * h;
+    for (let i = 0; i < n; i++) {
+      const r = buf[i * 4];
+      const g = buf[i * 4 + 1];
+      const b = buf[i * 4 + 2];
+      if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) nan++;
+      else if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) inf++;
+      else sum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { nan_ratio: nan / n, inf_ratio: inf / n, luma_mean: sum / n, float_path: 1 };
   }
 
   dispose(): void {

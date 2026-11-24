@@ -8,7 +8,8 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 
 - [x] Fase 0 — ✅ M0: scheletro + spike player dual-mode + doctor (commit 73f8260)
 - [x] Fase 1 — ✅ M1: player core realtime, libreria GLSL, harness, CLI play/bundle/probe, demo M1, golden, CI (commit 301bd6c)
-- [x] Fase 3 — ✅ M3 (CI): livello LLM completo — config YAML, client con retry/log redatto/costo, envelope+structured a 3 livelli, capabilities con cache, budget, `demogen init` + `models check`; 12 test con server finto, nessuna chiamata reale in CI
+- [x] Fase 3 — ✅ M3 (CI): livello LLM completo — config, client, envelope/structured, capabilities, budget, `demogen init` + `models check` (commit 55267e3)
+- [x] Fase 4 — ✅ M4: metriche video/perf/flash + gate numerici + sheets (contact/burst/diff/perf) + `demogen inspect`/`calibrate`; harness con stats float (NaN/Inf) e cellSequence; 10 test sintetici gate + E2E inspect; pytest 31/31
 - [ ] Fase 2 — audio
 - [ ] Fase 3 — livello LLM
 - [ ] Fase 4 — metriche e gate
@@ -27,11 +28,13 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - Play: `uv run demogen play <shader.glsl|timeline.json> [--gpu auto|hardware|swiftshader] [--headless]`
 - Bundle: `uv run demogen bundle examples/timeline.json --out out` → `.demo` + `.html`
 - Probe: `uv run demogen probe examples/timeline.json --gpu swiftshader|hardware` (PNG + ms in `out/`)
+- Inspect: `uv run demogen inspect examples/timeline.json --gpu swiftshader` (metriche+gate+fogli in `out/inspect_*/`)
+- Calibrate: `uv run demogen calibrate --gpu hardware` (ms dei 4 shader examples → `out/calibrate.json`)
 - Rigenera vettori timeline: `uv run python scripts/gen_vectors.py`
 
 ## Convenzioni
 
-- Python 3.11+, uv, typer, pydantic v2; ruff line-length 100.
+- Python 3.11+, uv, typer, pydantic v2; ruff line-length 120.
 - Player TypeScript **zero dipendenze runtime**; build esbuild (`dist/`), test vitest.
 - Shader: GLSL ES 3.00, contratto `mainImage(out vec4, in vec2)` con uniform `iResolution`/`iTime`; il player aggiunge header e `main()`.
 - Nessuna chiamata API reale nei test standard (`@pytest.mark.live`); perf su GPU reale solo locale (`@pytest.mark.perf`).

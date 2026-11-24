@@ -134,6 +134,8 @@ Nota: la Fase 3 (livello LLM) è quasi indipendente dal player e può essere svi
 
 **Milestone M4**: i casi sintetici sono classificati correttamente dai gate; `inspect` stampa metriche, perf con carico stimato, avvio, flash, dimensioni e salva i fogli.
 
+**Stato: ✅ M4 raggiunta.** `demogen/critic/`: `metrics_video` (NaN/Inf da FBO RGBA32F via harness `stats`, nero/bianco, luma, entropia, colorfulness Hasler–Süsstrunk, flicker z>4, loop_seam), `metrics_perf` (p50/p95/max/mean, pavimento, gpu_load_est, hotspot), `flash` (WCAG 2.3.1 su cellSequence 8×8 RGB: flash ≥0.1 luma relativa su ≥25% celle, finestre 1 s, flash rossi R/(R+G+B)≥0.8), `gates` (soglie da config: blocker/major/minor), `sheets` (contact sheet, burst strip, heatmap diff, grafico perf — Pillow), `critic.py` (chiamata LLM vision, usada in Fase 5). Harness esteso: `stats` (FBO float) e `cellSequence`. CLI: `demogen inspect <glsl|timeline.json|demo> --gpu swiftshader|hardware` (report in `out/inspect_*/`: contact/burst/diff/perf.png + metrics.json + issues.json) e `demogen calibrate` (4 shader examples su GPU reale → `out/calibrate.json`). Test: 10 sintetici (nero→major, NaN→blocker, strobo 10 Hz→blocker flash, flash rosso→blocker, p95→blocker, mean alto→major consumo, payload grande→major, compilazione lenta→major, loop_seam) + E2E inspect su M1 senza blocker. pytest 31/31, vitest 18/18, ruff pulito. Player core 7237 B gzip (< 12 KB).
+
 ---
 
 ### Fase 5 — Orchestratore v1 (senza oracolo)

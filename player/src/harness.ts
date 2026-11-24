@@ -51,45 +51,60 @@ function capture(opts: { times: number[]; width: number; height: number }): stri
   return opts.times.map((t) => current!.player.captureDataURL(t));
 }
 
-/** Luminanza media per cella di una griglia 8×8, per ogni frame (analisi flash). */
-function lumaSequence(opts: {
+/** Per ogni frame: media RGB per cella di una griglia 8×8 (analisi flash WCAG). */
+function cellSequence(opts: {
   t0: number;
   t1: number;
   fps: number;
   width: number;
   height: number;
-}): number[][] {
+}): number[][][] {
   if (!current) throw new Error("load() prima");
-  const { player, canvas } = current;
+  const { player } = current;
   const gl = player.gl;
   const w = opts.width;
   const h = opts.height;
   setSize(w, h);
   const cells = 8;
   const buf = new Uint8Array(w * h * 4);
-  const out: number[][] = [];
+  const out: number[][][] = [];
   const n = Math.max(1, Math.round((opts.t1 - opts.t0) * opts.fps));
+  const cw = w / cells;
+  const ch = h / cells;
   for (let i = 0; i < n; i++) {
     const t = opts.t0 + (i / n) * (opts.t1 - opts.t0);
     player.renderFrameAt(t);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-    const grid: number[] = new Array(cells * cells).fill(0);
-    const cw = w / cells;
-    const ch = h / cells;
+    const acc = new Float64Array(cells * cells * 3);
+    const cnt = new Float64Array(cells * cells);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const idx = (y * w + x) * 4;
-        const l = 0.2126 * buf[idx] + 0.7152 * buf[idx + 1] + 0.0722 * buf[idx + 2];
         const cx = Math.min(cells - 1, Math.floor(x / cw));
         const cy = Math.min(cells - 1, Math.floor(y / ch));
-        grid[cy * cells + cx] += l;
+        const c = cy * cells + cx;
+        acc[c * 3] += buf[idx];
+        acc[c * 3 + 1] += buf[idx + 1];
+        acc[c * 3 + 2] += buf[idx + 2];
+        cnt[c]++;
       }
     }
-    for (let k = 0; k < grid.length; k++) grid[k] /= cw * ch;
-    out.push(grid);
+    const frame: number[][] = [];
+    for (let c = 0; c < cells * cells; c++) {
+      const k = cnt[c] || 1;
+      frame.push([acc[c * 3] / k, acc[c * 3 + 1] / k, acc[c * 3 + 2] / k]);
+    }
+    out.push(frame);
   }
   return out;
+}
+
+/** Statistiche float (NaN/Inf/luma) per tempo, su FBO RGBA32F. */
+function stats(opts: { times: number[]; width: number; height: number }): Record<number, unknown>[] {
+  if (!current) throw new Error("load() prima");
+  setSize(opts.width, opts.height);
+  return opts.times.map((t) => current!.player.sceneStats(t, opts.width, opts.height));
 }
 
 /** ms per tempo (mediana su repeats), fuori da rAF, con fence+finish.
@@ -161,5 +176,5 @@ function state(tl: unknown, t: number): unknown {
   return stateAt(tl as never, t);
 }
 
-const api = { load, capture, lumaSequence, profile, info, state };
+const api = { load, capture, cellSequence, stats, profile, info, state };
 (window as unknown as { __demogen: typeof api }).__demogen = api;
