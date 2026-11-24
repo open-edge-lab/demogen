@@ -1,0 +1,28 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: astral-sh/setup-uv@v5
+      - run: npm install
+      - run: npm run build
+      - run: npm run typecheck --workspace player
+      - run: npm test --workspace player
+      - run: uv sync
+      - run: uv run playwright install chromium
+      - run: uv run ruff check .
+      - run: uv run pytest -q
+      - name: size gate player core (≤ 12 KB gzip)
+        run: |
+          uv run python -c "
+          import gzip, pathlib
+          b = pathlib.Path('player/dist/demogen-player.min.js').read_bytes()
+          g = len(gzip.compress(b, 9))
+          assert g <= 12*1024, f'player core {g} B gzip > 12288 B'
+          print('player core gzip:', g, 'B')
+          "

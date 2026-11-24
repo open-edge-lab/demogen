@@ -6,8 +6,8 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 
 ## Stato fasi
 
-- [x] Fase 0 — ✅ M0: scheletro monorepo + spike player WebGL2 dual-mode (GPU reale via full Chromium `channel="chromium"`, CPU via SwiftShader) + harness Playwright + `demogen doctor` + spike PNG/ms in `out/`
-- [ ] Fase 1 — player core realtime (profili, libreria GLSL, harness, CLI play)
+- [x] Fase 0 — ✅ M0: scheletro + spike player dual-mode + doctor (commit 73f8260)
+- [x] Fase 1 — ✅ M1: player core realtime (timeline/compositor/post-bloom/quality/format/element), libreria GLSL `demogen/glsl/lib` (incl. retro + font 8x8 originale), preprocessor/treeshake(topologico)/minify, harness completo, CLI `play`/`bundle`/`probe`, demo M1 in `examples/` (4 scene, probe OK su GPU e CPU), golden su SwiftShader, player core 6761 B gzip, CI
 - [ ] Fase 2 — audio
 - [ ] Fase 3 — livello LLM
 - [ ] Fase 4 — metriche e gate
@@ -22,7 +22,10 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - Player: `npm install`, build `npm run build`, test `npm test --workspace player`
 - Spike: `uv run python -m demogen.browser.spike` (PNG + ms/frame in `out/`)
 - Doctor: `uv run demogen doctor`
-- Play: `uv run demogen play <shader.glsl> [--gpu auto|hardware|swiftshader] [--headless]`
+- Play: `uv run demogen play <shader.glsl|timeline.json> [--gpu auto|hardware|swiftshader] [--headless]`
+- Bundle: `uv run demogen bundle examples/timeline.json --out out` → `.demo` + `.html`
+- Probe: `uv run demogen probe examples/timeline.json --gpu swiftshader|hardware` (PNG + ms in `out/`)
+- Rigenera vettori timeline: `uv run python scripts/gen_vectors.py`
 
 ## Convenzioni
 

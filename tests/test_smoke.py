@@ -1,42 +1,57 @@
-"""Smoke test Fase 0: l'harness nel browser compila lo shader e cattura un frame non nero."""
+"""Smoke test: l'harness nel browser carica un payload, compila e cattura un frame non nero."""
 
 from __future__ import annotations
 
-import base64
 import io
 
 import pytest
 
 pytest.importorskip("playwright")
 
-from demogen.browser.session import BrowserSession  # noqa: E402
+from demogen.browser.harness import Harness  # noqa: E402
+
+PAYLOAD = {
+    "format": "demogen/1",
+    "meta": {"title": "smoke", "duration_s": 4, "loop": True, "bpm": 120, "beats_per_bar": 4},
+    "timeline": {
+        "bpm": 120,
+        "beats_per_bar": 4,
+        "scenes": [
+            {"id": "s1", "start_bar": 0, "bars": 4, "transition_in": "cut", "transition_bars": 0}
+        ],
+    },
+    "common": "",
+    "scenes": {
+        "s1": (
+            "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n"
+            "    vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n"
+            "    vec3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0.0, 0.33, 0.67));\n"
+            "    fragColor = vec4(col, 1.0);\n"
+            "}\n"
+        )
+    },
+    "render": {"profile": "modern"},
+    "quality": {"target_fps": 60, "min_scale": 0.5},
+}
 
 
-def _capture(mode: str) -> tuple[dict, bytes, dict]:
-    with BrowserSession(gpu=mode, headless=True) as sess:  # type: ignore[arg-type]
-        sess.goto("harness.html")
-        info = sess.harness_info()
-        png_b64 = sess.page.evaluate("window.__demogen.capture(1.0)")
-        prof = sess.page.evaluate("window.__demogen.profile([0.0, 1.0], 2)")
-    png = base64.b64decode(png_b64.split(",", 1)[1])
-    # le chiavi numeriche dell'oggetto JS llegan a Python come stringhe
-    prof = {float(k): v for k, v in prof.items()}
-    return info, png, prof
-
-
-def test_harness_swiftshader_compila_e_cattura() -> None:
+def test_harness_swiftshader_load_capture_profile() -> None:
     try:
-        info, png, prof = _capture("swiftshader")
+        with Harness(gpu="swiftshader") as h:
+            res = h.load(PAYLOAD)
+            assert res["ok"], res["errors"]
+            info = h.info()
+            assert info["webgl2"]
+            assert "swiftshader" in info["renderer"].lower()
+            pngs = h.capture([1.0], 320, 180)
+            prof = h.profile([0.0, 1.0], 320, 180, repeats=2)
     except Exception as e:  # noqa: BLE001
         pytest.skip(f"browser Playwright non disponibile: {e}")
-    assert info["webgl2"]
-    assert "swiftshader" in info["renderer"].lower()
-    # la misura ms in headless shell è unreliable (valori ~0): qui basta che il
-    # profilo restituisca numeri; la misura accurata arriva in Fase 1 (timer query)
-    assert prof[0.0] >= 0 and prof[1.0] >= 0
 
     from PIL import Image
 
-    img = Image.open(io.BytesIO(png)).convert("L")
-    assert img.size == (640, 360)
+    img = Image.open(io.BytesIO(pngs[0])).convert("L")
+    assert img.size == (320, 180)
     assert img.getextrema()[1] > 10  # frame non nero
+    assert {float(k) for k in prof["samples"]} == {0.0, 1.0}
+    assert all(v >= 0 for v in prof["samples"].values())

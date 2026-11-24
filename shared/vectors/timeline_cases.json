@@ -1,0 +1,432 @@
+[
+ {
+  "timeline": {
+   "bpm": 128.0,
+   "beats_per_bar": 4,
+   "scenes": [
+    {
+     "id": "s1",
+     "start_bar": 0,
+     "bars": 8,
+     "transition_in": "cut",
+     "transition_bars": 0
+    },
+    {
+     "id": "s2",
+     "start_bar": 8,
+     "bars": 8,
+     "transition_in": "crossfade",
+     "transition_bars": 1
+    },
+    {
+     "id": "s3",
+     "start_bar": 16,
+     "bars": 8,
+     "transition_in": "flash",
+     "transition_bars": 2
+    }
+   ]
+  },
+  "cases": [
+   {
+    "t": 0.0,
+    "expect": {
+     "sceneId": "s1",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 0.0,
+     "bar": 0.0,
+     "sceneTime": 0.0,
+     "sceneProgress": 0.0,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 4.5,
+    "expect": {
+     "sceneId": "s1",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 9.6,
+     "bar": 2.4,
+     "sceneTime": 4.5,
+     "sceneProgress": 0.3,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 11.25,
+    "expect": {
+     "sceneId": "s1",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 24.0,
+     "bar": 6.0,
+     "sceneTime": 11.25,
+     "sceneProgress": 0.75,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 13.125,
+    "expect": {
+     "sceneId": "s1",
+     "prevSceneId": "s1",
+     "nextSceneId": "s2",
+     "transition": "crossfade",
+     "alpha": 0.0,
+     "beat": 28.0,
+     "bar": 7.0,
+     "sceneTime": 13.125,
+     "sceneProgress": 0.875,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 14.0625,
+    "expect": {
+     "sceneId": "s1",
+     "prevSceneId": "s1",
+     "nextSceneId": "s2",
+     "transition": "crossfade",
+     "alpha": 0.5,
+     "beat": 30.0,
+     "bar": 7.5,
+     "sceneTime": 14.0625,
+     "sceneProgress": 0.9375,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 14.998125,
+    "expect": {
+     "sceneId": "s1",
+     "prevSceneId": "s1",
+     "nextSceneId": "s2",
+     "transition": "crossfade",
+     "alpha": 0.9989999999999997,
+     "beat": 31.996,
+     "bar": 7.999,
+     "sceneTime": 14.998125,
+     "sceneProgress": 0.999875,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 22.5,
+    "expect": {
+     "sceneId": "s2",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 48.0,
+     "bar": 12.0,
+     "sceneTime": 7.5,
+     "sceneProgress": 0.5,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 26.25,
+    "expect": {
+     "sceneId": "s2",
+     "prevSceneId": "s2",
+     "nextSceneId": "s3",
+     "transition": "flash",
+     "alpha": 0.0,
+     "beat": 56.0,
+     "bar": 14.0,
+     "sceneTime": 11.25,
+     "sceneProgress": 0.75,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 28.125,
+    "expect": {
+     "sceneId": "s2",
+     "prevSceneId": "s2",
+     "nextSceneId": "s3",
+     "transition": "flash",
+     "alpha": 0.5,
+     "beat": 60.0,
+     "bar": 15.0,
+     "sceneTime": 13.125,
+     "sceneProgress": 0.875,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 29.99625,
+    "expect": {
+     "sceneId": "s2",
+     "prevSceneId": "s2",
+     "nextSceneId": "s3",
+     "transition": "flash",
+     "alpha": 0.9989999999999997,
+     "beat": 63.992,
+     "bar": 15.998,
+     "sceneTime": 14.99625,
+     "sceneProgress": 0.99975,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 33.75,
+    "expect": {
+     "sceneId": "s3",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 72.0,
+     "bar": 18.0,
+     "sceneTime": 3.75,
+     "sceneProgress": 0.25,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 40.5,
+    "expect": {
+     "sceneId": "s3",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 86.4,
+     "bar": 21.6,
+     "sceneTime": 10.5,
+     "sceneProgress": 0.7,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 44.55,
+    "expect": {
+     "sceneId": "s3",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 95.03999999999999,
+     "bar": 23.759999999999998,
+     "sceneTime": 14.549999999999997,
+     "sceneProgress": 0.9699999999999999,
+     "durationS": 45.0
+    }
+   },
+   {
+    "t": 45.0,
+    "expect": {
+     "sceneId": "s3",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 96.0,
+     "bar": 24.0,
+     "sceneTime": 15.0,
+     "sceneProgress": 1.0,
+     "durationS": 45.0
+    }
+   }
+  ]
+ },
+ {
+  "timeline": {
+   "bpm": 90.0,
+   "beats_per_bar": 4,
+   "scenes": [
+    {
+     "id": "a",
+     "start_bar": 0,
+     "bars": 4,
+     "transition_in": "cut",
+     "transition_bars": 0
+    },
+    {
+     "id": "b",
+     "start_bar": 4,
+     "bars": 4,
+     "transition_in": "fade_black",
+     "transition_bars": 1
+    }
+   ]
+  },
+  "cases": [
+   {
+    "t": 0.0,
+    "expect": {
+     "sceneId": "a",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 0.0,
+     "bar": 0.0,
+     "sceneTime": 0.0,
+     "sceneProgress": 0.0,
+     "durationS": 21.333333333333332
+    }
+   },
+   {
+    "t": 2.1333,
+    "expect": {
+     "sceneId": "a",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 3.1999500000000003,
+     "bar": 0.7999875000000001,
+     "sceneTime": 2.1333,
+     "sceneProgress": 0.19999687500000002,
+     "durationS": 21.333333333333332
+    }
+   },
+   {
+    "t": 5.3333,
+    "expect": {
+     "sceneId": "a",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 7.999950000000001,
+     "bar": 1.9999875000000003,
+     "sceneTime": 5.3333,
+     "sceneProgress": 0.49999687500000006,
+     "durationS": 21.333333333333332
+    }
+   },
+   {
+    "t": 8.0,
+    "expect": {
+     "sceneId": "a",
+     "prevSceneId": "a",
+     "nextSceneId": "b",
+     "transition": "fade_black",
+     "alpha": 0.0,
+     "beat": 12.0,
+     "bar": 3.0,
+     "sceneTime": 8.0,
+     "sceneProgress": 0.75,
+     "durationS": 21.333333333333332
+    }
+   },
+   {
+    "t": 9.333333333333334,
+    "expect": {
+     "sceneId": "a",
+     "prevSceneId": "a",
+     "nextSceneId": "b",
+     "transition": "fade_black",
+     "alpha": 0.5000000000000004,
+     "beat": 14.000000000000002,
+     "bar": 3.5000000000000004,
+     "sceneTime": 9.333333333333334,
+     "sceneProgress": 0.8750000000000001,
+     "durationS": 21.333333333333332
+    }
+   },
+   {
+    "t": 10.664,
+    "expect": {
+     "sceneId": "a",
+     "prevSceneId": "a",
+     "nextSceneId": "b",
+     "transition": "fade_black",
+     "alpha": 0.9990000000000001,
+     "beat": 15.996,
+     "bar": 3.999,
+     "sceneTime": 10.664,
+     "sceneProgress": 0.99975,
+     "durationS": 21.333333333333332
+    }
+   },
+   {
+    "t": 10.6667,
+    "expect": {
+     "sceneId": "b",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 16.00005,
+     "bar": 4.0000125,
+     "sceneTime": 3.3333333334439885e-05,
+     "sceneProgress": 3.1250000001037392e-06,
+     "durationS": 21.333333333333332
+    }
+   },
+   {
+    "t": 16.0,
+    "expect": {
+     "sceneId": "b",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 24.0,
+     "bar": 6.0,
+     "sceneTime": 5.333333333333334,
+     "sceneProgress": 0.5000000000000001,
+     "durationS": 21.333333333333332
+    }
+   },
+   {
+    "t": 19.2,
+    "expect": {
+     "sceneId": "b",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 28.8,
+     "bar": 7.2,
+     "sceneTime": 8.533333333333333,
+     "sceneProgress": 0.8,
+     "durationS": 21.333333333333332
+    }
+   },
+   {
+    "t": 21.12,
+    "expect": {
+     "sceneId": "b",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 31.680000000000003,
+     "bar": 7.920000000000001,
+     "sceneTime": 10.453333333333335,
+     "sceneProgress": 0.9800000000000002,
+     "durationS": 21.333333333333332
+    }
+   },
+   {
+    "t": 21.3333,
+    "expect": {
+     "sceneId": "b",
+     "prevSceneId": null,
+     "nextSceneId": null,
+     "transition": "cut",
+     "alpha": 1.0,
+     "beat": 31.999950000000002,
+     "bar": 7.9999875000000005,
+     "sceneTime": 10.666633333333335,
+     "sceneProgress": 0.9999968750000002,
+     "durationS": 21.333333333333332
+    }
+   }
+  ]
+ }
+]

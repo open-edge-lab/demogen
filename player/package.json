@@ -4,10 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/spike.ts --bundle --format=iife --global-name=demogen --outfile=dist/demogen-spike.js && esbuild src/spike.ts --bundle --format=iife --global-name=demogen --minify --outfile=dist/demogen-spike.min.js",
+    "build": "npm run build:core && npm run build:harness",
+    "build:core": "esbuild src/index.ts --bundle --format=iife --global-name=demogenPlayer --minify --outfile=dist/demogen-player.min.js",
+    "build:harness": "esbuild src/harness.ts --bundle --format=iife --global-name=demogenHarness --outfile=dist/demogen-harness.js",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "esbuild": "^0.20.0",
     "typescript": "^5.4.0",
     "vitest": "^1.5.0"

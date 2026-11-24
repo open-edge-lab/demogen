@@ -92,6 +92,8 @@ Nota: la Fase 3 (livello LLM) è quasi indipendente dal player e può essere svi
 
 **Milestone M1**: demo con 4 shader scritti a mano (tunnel, frattale IFS, terreno, plasma retro con scroller) + transizioni, renderizzata in realtime dal motore nostro: 60 fps a 1080p su Mac con GPU (ANGLE → Metal); in modalità CPU (SwiftShader) renderizza comunque senza errori (fps ridotti accettati — il gate realtime vale solo in GPU). Golden test verdi su SwiftShader; player core ≤ 12 KB gzip. Gli embed web (`examples/embed`, eco mode) **non sono obiettivo di questo step**.
 
+**Stato: ✅ M1 raggiunta.** Player core 6761 B gzip (budget 12288). Demo M1 (`examples/timeline.json`, 4 scene, 64 s, bpm 120): compila in Chromium (52 ms CPU / 2,1 s GPU ANGLE→D3D per 4 programmi raymarching), probe OK in **entrambe** le modalità — SwiftShader (4 frame non neri, scene distinte) e GPU reale Intel UHD 620 (0,7–2,0 ms/frame a 960×540 → 60 fps @1080p plausibili; Mac Apple Silicon da verificare sul campo). Bundle: `out/demogen-m1.demo` 3,8 KB gzip + `out/demogen-m1.html` standalone 32,7 KB. Parità timeline Python↔TS su 25 vettori condivisi. CI GitHub Actions (uv+npm+playwright+ruff+pytest+vitest+size gate). Bug trovati e fissati: hash hex >2³¹ overflow su ANGLE (costanti <2³¹), treeshake con ordine topologico (self-loop escluso), forward declaration condizionale di `map`, busy-wait timer query → fence di default.
+
 ---
 
 ### Fase 2 — Audio
