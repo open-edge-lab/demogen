@@ -13,8 +13,8 @@ CI, docs). Contiene lo stato, i problemi ancora aperti e i batch di correzione d
 | D | Correttezza della pipeline LLM | ✅ fatto: budget persistito e applicato, output strutturato con fallback, resume per scena/artefatto, versioni max+1, `#line` per il fixer, flag di S0, blocker che bloccano |
 | E | Gate del critic (flash, perf, flicker) | ✅ fatto: flash WCAG e perf in `60ff24c`; burst consecutivi + score di oscillazione, loop seam, floor, perf alla risoluzione del budget, audio L+R con onset forti |
 | F | Player TS | ✅ fatto: LINK_STATUS, clock con pausa/loop, resize, `play`, scheduling audio, pack8, dispose/restore, transizioni, pacing, formato (core 11,5 KB gzip su 12) |
-| G | Oracolo matematico | da fare |
-| H | Docs | da fare |
+| G | Oracolo matematico | ✅ fatto: codegen valido (compilato nel browser), arità e nomi riservati, semantica GLSL, verifica severa (SDF 3D, segno, coppie vicine, punti minimi), firma/id, rifiuti all'LLM, watchdog psutil, sympy rimosso; minify, treeshake (prototipi + conflitti), preprocessor, libreria (gnoise, hash, chip, calcAO). Non fatto: SourceMap collegata a `probe`/`inspect` (la pipeline rimappa con `#line`) |
+| H | Docs | ✅ fatto: README, CLAUDE.md, piano-esecuzione riallineato, player-web-library |
 
 Ordine consigliato: B → C → D → E → F → G → H. Un commit per batch (`fix(<area>): …`); rivedere con l'utente alla
 fine di ogni batch.
@@ -22,10 +22,10 @@ fine di ogni batch.
 ### Come riprendere
 
 - **Branch:** `git checkout fix/review-batch-a`. `main` è fermo a `1520fcb`; il merge non è ancora stato fatto.
-- **Ambiente:** `uv` è installato per l'utente via pip ma **non è nel PATH**, quindi va lanciato come
-  `py -m uv …`. Per esempio:
-  - `py -m uv run pytest -q`
-  - `py -m uv run ruff check .`
+- **Ambiente:** dal 2026-11-25 sera `uv` è nel PATH (`C:\Users\Andrea\.local\bin\uv.exe`); il `.venv`
+  creato su un'altra macchina è stato rigenerato con Python 3.13 (`uv sync --python 3.13`). Per esempio:
+  - `uv run pytest -q`
+  - `uv run ruff check .`
   - `npm run build`
   - `npm run typecheck --workspace player`
   - `npm test --workspace player`

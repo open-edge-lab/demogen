@@ -27,6 +27,9 @@ bundler basta `import { Player } from "@demogen/player"`.
 - `src` — URL di un payload `.demo` (JSON, tipicamente 2–12 KB gzip).
 - inline: senza `src`, legge `<script type="application/json">` dentro il tag.
 - attributi: `autoplay` (default on, `autoplay="none"` per disattivarlo), `loop`.
+- eventi: `demogen-ready` a player pronto; `demogen-error` (in `detail` l'errore, anche HTTP non 2xx)
+  con l'attributo `data-error` sul tag. Spostare il tag nel DOM non crea un secondo player; rimuoverlo
+  annulla il fetch in corso e libera tutto (`dispose`).
 
 ## Uso 2 — API programmatica
 
@@ -42,6 +45,21 @@ bundler basta `import { Player } from "@demogen/player"`.
 </script>
 ```
 
+Opzioni di `new Player(canvas, payload, opts)`:
+
+| Opzione | Default | Note |
+| --- | --- | --- |
+| `autoPlay` | `true` | parte dopo `load()` |
+| `autoResize` | `true` | il buffer del canvas segue la dimensione CSS × devicePixelRatio (max 2) con un `ResizeObserver`; `false` se la dimensione la gestisci tu |
+| `audioContext` | — | un `AudioContext` già creato e sbloccato **nel gesto utente** (click): senza, l'audio parte al primo click/tasto successivo |
+| `flashLimit` | `1` | limite fotosensibilità (0..1) per `beatFlash` e le transizioni flash; il player lo abbassa comunque sotto soglia WCAG se i beat superano 3/s o con `prefers-reduced-motion` |
+| `preserveDrawingBuffer` | `false` | serve solo per catturare frame con `toDataURL` |
+| `onReady` / `onError` / `onQualityChange` | — | callback |
+
+`pause()` conserva la posizione (con l'audio attivo, quella del clock audio); `play()` riprende da lì.
+In loop il tempo (video e audio) è modulo durata. `dispose()` libera programmi, FBO, listener,
+`ResizeObserver` e audio (chiude l'`AudioContext` solo se l'ha creato il player).
+
 ## Embed 8bit stile sito (zero banda)
 
 Vedi `examples/web/8bit.html`: un `<demogen-player>` 320×180 (profilo retro,
@@ -53,9 +71,11 @@ Per mostrarlo nel tuo sito copia solo due file: `demogen-player.esm.js` e il
 
 | Export | Note |
 | --- | --- |
-| `Player` | `new Player(canvas, payload, opts)`; `load/play/pause/seek/dispose`, `gl`, `duration` |
+| `Player` | `new Player(canvas, payload, opts)`; `load/play/pause/seek/dispose`, `isPlaying`, `currentTime()`, `gl`, `durationS` |
 | `DemogenPlayerElement` | custom element `<demogen-player>` (auto-registrato se c'è DOM) |
-| `parsePayload` / `textToUniform` | validazione payload `.demo` |
+| `parsePayload` / `textToUniform` / `textByteLength` | validazione payload `.demo` (max 1 MB, bpm/bars > 0); testo scroller in byte UTF-8 (max 256) |
+| `PlaybackClock` | clock puro play/pause/seek/loop (usato dal player, testabile senza DOM) |
+| `chunkSchedule` | chunk audio e offset per un tempo dato (scheduling del primo campione) |
 | `stateAt` | stato timeline al tempo t (scene, transizioni, beat) |
 | `QualityController` | quality adattiva (riduce la risoluzione interna se lento) |
 | `rendererInfo` / `isSoftwareRenderer` | info GPU / detect CPU fallback |

@@ -235,7 +235,7 @@ demogen/
 │   │   ├── oracle.py             # chiamata LLM ruolo math
 │   │   ├── safe_parse.py         # parsing con whitelist, in subprocess
 │   │   ├── verify.py             # verifiche simboliche + numeriche
-│   │   └── codegen.py            # sympy → GLSL ES (letterali float, firma richiesta)
+│   │   └── codegen.py            # AST safe → GLSL ES (letterali float, firma richiesta); sympy non usato
 │   ├── critic/
 │   │   ├── metrics_video.py
 │   │   ├── metrics_audio.py
@@ -825,7 +825,7 @@ Ogni step legge e scrive artefatti nella cartella progetto e aggiorna `state.jso
 1. L'orchestratore emette `MathRequest` quando serve una formula non banale (SDF di una forma insolita, deformazione con bound di Lipschitz, traiettoria camera chiusa, parametri di un attrattore che resti in regione visibile).
 2. Il ruolo `math` risponde con `MathResult` in sintassi SymPy, dichiarando **claim verificabili**.
 3. `verify.py` controlla i claim; `verified` è deciso **solo** dal verificatore.
-4. `codegen.py` traduce con `sympy.printing.glsl.glsl_code`, incapsula nella firma richiesta e **normalizza per GLSL ES**: letterali numerici sempre float (`pow(x, 2)` → `pow(x, 2.0)`), nessuna conversione implicita, solo funzioni disponibili in ES 3.00.
+4. `codegen.py` traduce l'AST safe (implementazione reale: niente sympy, che è stato rimosso dalle dipendenze; `%` → `mod`, `atan2` → `atan(y, x)`, `**` 2..4 → moltiplicazioni), incapsula nella firma richiesta (ordine di `inputs`) e **normalizza per GLSL ES**: letterali numerici sempre float (`pow(x, 2)` → `pow(x, 2.0)`), nessuna conversione implicita, solo funzioni disponibili in ES 3.00.
 
 Un bound di Lipschitz corretto ha anche un effetto sulle prestazioni: permette il passo di raymarching più lungo possibile senza artefatti.
 

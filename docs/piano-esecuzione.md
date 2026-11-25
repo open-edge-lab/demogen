@@ -102,7 +102,7 @@ Nota: la Fase 3 (livello LLM) è quasi indipendente dal player e può essere svi
 - `audio.ts`: render GPU a blocchi (RGBA8 16 bit; float via `EXT_color_buffer_float` nell'harness), prebuffer `audio.prebuffer_s` + resto in background (≤ 2 ms/frame), scheduling chunk su clock `AudioContext`, clock audio master, sblocco al gesto, seek con render sincrono del chunk mancante.
 - Libreria audio §7 (`osc`, `env`, `drums`, `music`, `chip`) con test su FFT, inviluppi, duty cycle.
 - `metrics_audio.py` + spettrogramma con griglia di battute.
-- Test scheduling con `OfflineAudioContext` (sinusoide continua tra chunk, nessuna discontinuità).
+- Test scheduling: ~~`OfflineAudioContext`~~ non implementato. Copertura reale (review 2026-11-25): continuità tra chunk sul render GPU (harness), `chunkSchedule` puro (vitest: chunk + offset del primo campione), fallback RGBA8 ≈ float (errore < 1e-4).
 
 **Verifiche [VERIFICARE]**: assenza di click/gap tra chunk (alternativa: AudioWorklet con codice fisso del player); supporto `outputLatency` per browser.
 
@@ -133,6 +133,8 @@ Nota: la Fase 3 (livello LLM) è quasi indipendente dal player e può essere svi
 
 **Verifiche [VERIFICARE]**: approssimazione del gate flash vs WCAG 2.3.1 (confronto con strumento di riferimento su clip di prova).
 
+**Aggiornamento review 2026-11-25 (Batch E).** Il gate flash di M4 non seguiva WCAG (media in sRGB, 25% dello schermo, ogni transizione contata come flash, 8 fps sui primi 6 s → aliasing). Ora: celle 16×16 linearizzate per pixel, transizioni con isteresi 0,1 e stato scuro < 0,8, flash = coppia di transizioni opposte, fallisce se un'area ≥ 2,8% dello schermo (25% di 10°; approssimazione conservativa: celle anche non contigue) lampeggia più di 3 volte in una finestra mobile di 1 s; rosso contato a coppie; 30 fps su tutta la scena (S5), su tutta la demo con le transizioni (S9) e in `inspect`. Il flicker "z>4" (impossibile con ≤16 campioni) è sostituito da uno score di oscillazione su raffiche di frame consecutivi; `loop_seam` confronta t = dur−1/fps con t = 0. Perf: su SwiftShader i gate sono `info`, su GPU si misura alla risoluzione del budget (altrimenti scala per rapporto di pixel). `calibrate.json` resta **informativo**: nessun gate lo legge (manca una scala di riferimento affidabile).
+
 **Milestone M4**: i casi sintetici sono classificati correttamente dai gate; `inspect` stampa metriche, perf con carico stimato, avvio, flash, dimensioni e salva i fogli.
 
 **Stato: ✅ M4 raggiunta.** `demogen/critic/`: `metrics_video` (NaN/Inf da FBO RGBA32F via harness `stats`, nero/bianco, luma, entropia, colorfulness Hasler–Süsstrunk, flicker z>4, loop_seam), `metrics_perf` (p50/p95/max/mean, pavimento, gpu_load_est, hotspot), `flash` (WCAG 2.3.1 su cellSequence 8×8 RGB: flash ≥0.1 luma relativa su ≥25% celle, finestre 1 s, flash rossi R/(R+G+B)≥0.8), `gates` (soglie da config: blocker/major/minor), `sheets` (contact sheet, burst strip, heatmap diff, grafico perf — Pillow), `critic.py` (chiamata LLM vision, usada in Fase 5). Harness esteso: `stats` (FBO float) e `cellSequence`. CLI: `demogen inspect <glsl|timeline.json|demo> --gpu swiftshader|hardware` (report in `out/inspect_*/`: contact/burst/diff/perf.png + metrics.json + issues.json) e `demogen calibrate` (4 shader examples su GPU reale → `out/calibrate.json`). Test: 10 sintetici (nero→major, NaN→blocker, strobo 10 Hz→blocker flash, flash rosso→blocker, p95→blocker, mean alto→major consumo, payload grande→major, compilazione lenta→major, loop_seam) + E2E inspect su M1 senza blocker. pytest 31/31, vitest 18/18, ruff pulito. Player core 7237 B gzip (< 12 KB).
@@ -144,6 +146,7 @@ Nota: la Fase 3 (livello LLM) è quasi indipendente dal player e può essere svi
 **Task**
 - `spec/models.py` completo (pydantic v2, §9).
 - `pipeline.py`: macchina a stati S0–S9, `state.json`, resume idempotente; step S0, S1, S2, S4–S9; selezione best con anti-regressione e penalità perf.
+  - *Review 2026-11-25 (Batch D)*: in M5 il resume NON era idempotente (S4–S7 marcati dopo la prima scena, log sovrascritti) e il budget non veniva mai applicato. Ora: richiesta salvata prima di S0, scene marcate una per una, artefatti riusati (S5/S6/S7), log che non si sovrascrivono, spesa in `state.json` a ogni step, `BudgetExceeded` → bundle con le best attuali (`state["stopped"]`), "accept" solo senza blocker, S9 fallisce con blocker. Verificato da test (resume dopo crash = solo le chiamate mancanti; resume a progetto completo = 0 chiamate).
 - Template prompt §17 (tranne `math`), varianti modern/retro e modern/chip; prefisso stabile cacheable.
 - Parallelismo: `asyncio` + `llm_concurrency`, pool pagine per catture, perf lane serializzato.
 - `report.md`; CLI `generate`, `resume`, `revise`, `report`.
@@ -157,11 +160,14 @@ Nota: la Fase 3 (livello LLM) è quasi indipendente dal player e può essere svi
 **Stato: ✅ M6 raggiunta.** `demogen/math/`: `safe_parse.py` (whitelist AST + eval in subprocess con RLIMIT_AS/CPU e timeout; cross-platform, su Windows solo timeout), `verify.py` (claim numerici: sdf via |grad f|≈1 + segno, lipschitz, periodic_path, easing, identity), `codegen.py` (AST safe → GLSL ES 3.00 deterministico, funzioni vettoriali → vec2/vec3), `oracle.py` (accepted/rejected con reason). Integrazione: `ShaderSubmission.math_requests` → S2/S7 `run_oracle_for` salva `vN.math.glsl` (solo accepted) e lo concatena in S4/S5/S9 (`with_math`). Prompt: sezione "Math oracle" in scene modern/retro. Test: 29 unit (parse malevoli rifiutati, claim veri/falsi, codegen, oracle E2E) + E2E fake con math_request vero (accettato, nel .demo) e falso (rifiutato).
 **Task**
 - `safe_parse.py`: whitelist token, subprocess con timeout 5 s + watchdog RSS (psutil, macOS), test di rifiuto (`__import__`, attributi, lambda, stringhe).
+  - *Review 2026-11-25 (Batch C/G)*: in M6 il watchdog psutil non esisteva (solo RLIMIT su POSIX, timeout 10 s). Ora: `python -I -c` (niente import dalla cartella corrente), watchdog psutil su RSS (processo + figli, 512 MB) e tempo (5 s) **su tutti gli OS**, parametri del claim limitati (samples ≤ 4096, tol ≤ 1e-2), arità controllata, nomi riservati GLSL rifiutati, semantica Python allineata a GLSL (mod floored, smoothstep, pow con base negativa indefinito, `**` solo con esponente 2..4).
 - `verify.py`: tutti i tipi di claim (§11.2) con test veri/falsi noti.
-- `codegen.py`: sympy → GLSL ES normalizzato (float letterali, no conversioni implicite).
+  - *Review*: ora lega tutte le variabili (SDF 3D verificabili), richiede ≥ 90% di punti valutati, Lipschitz su coppie vicine, segno della SDF verificato sul bordo del dominio (e su `inside`).
+- `codegen.py`: ~~sympy~~ AST safe → GLSL ES normalizzato (float letterali, no conversioni implicite). sympy non è mai stato usato ed è stato rimosso dalle dipendenze. `%` → `mod()`, `atan2` → `atan(y, x)`, funzioni vettoriali con due vettori, firma nell'ordine di `inputs`; ogni costrutto è compilato nel browser in un test.
 - Step S3 e integrazione nel prompt orchestratore.
 
 **Milestone M6**: E2E finto con `math_requests` include snippet verificato che compila in tutti i motori; claim falsi tutti rifiutati.
+*Precisazione (review)*: "tutti" vale per le classi verificate dai test (SDF senza regione negativa o invertita, gradiente ≠ 1, Lipschitz oltre il bound o senza punti valutati, periodo sbagliato, easing non 0→1, identità false); la verifica è statistica su punti campionati, non una dimostrazione.
 
 ---
 
@@ -207,11 +213,11 @@ Queste decisioni vanno confermate con lo stakeholder **prima di iniziare la Fase
 |---|---|
 | GPU reale non raggiungibile in headless su macOS | Fase 0 (spike + doctor) — blocca tutto se non risolto |
 | Transfer frame pagina→Python lento | Fase 0 (misura throughput, alternative exposeBinding/WebSocket) |
-| Click/gap nello scheduling audio a chunk | Fase 2 (OfflineAudioContext test; fallback AudioWorklet a codice fisso) |
+| Click/gap nello scheduling audio a chunk | Fase 2: primo chunk con offset, risincronizzazione sugli underrun, continuità testata sul render GPU (OfflineAudioContext non usato); fallback AudioWorklet a codice fisso |
 | Campi OpenRouter/SDK openai non come atteso | Fase 3 (models check + cache; fallback config manuale) |
-| Gate flash non allineato a WCAG 2.3.1 | Fase 4 (confronto con strumento di riferimento) |
+| Gate flash non allineato a WCAG 2.3.1 | Fase 4 + review Batch E (coppie di transizioni, area 2,8%, 30 fps, luce lineare); resta il confronto con uno strumento di riferimento (PEAT/Harding) |
 | Compilazione lenta ANGLE→D3D su Windows | Fase 1 convenzioni sui cicli; Fase 7 bench manuale Windows |
-| Costi LLM che esplodono | Fase 3 `budget.py` + Fase 5 stop con migliore versione |
+| Costi LLM che esplodono | Fase 3 `budget.py` + Fase 5 stop con migliore versione (effettivo solo dalla review Batch D: prima il budget non arrivava ai client) |
 | Differenze cross-browser del GLSL | Fase 1 golden test + Fase 7 gate compatibilità 3 motori |
 
 ---
