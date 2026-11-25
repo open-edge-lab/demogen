@@ -22,7 +22,7 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - Player: `npm install`, build `npm run build`, test `npm test --workspace player`
 - Spike: `uv run python -m demogen.browser.spike` (PNG + ms/frame in `out/`)
 - Doctor: `uv run demogen doctor`
-- LLM: `uv run demogen init` (template config), `uv run demogen models check` (tabella ruoli; live, manuale)
+- LLM: `uv run demogen init` (crea `demogen.yaml`, gitignored, dal template `demogen/demo.yaml`; chiave in `api_key` o env `api_key_env`), `uv run demogen models check` (tabella ruoli; live, manuale)
 - Play: `uv run demogen play <shader.glsl|timeline.json> [--gpu auto|hardware|swiftshader] [--headless]`
 - Bundle: `uv run demogen bundle examples/timeline.json --out out` → `.demo` + `.html`
 - Probe: `uv run demogen probe examples/timeline.json --gpu swiftshader|hardware` (PNG + ms in `out/`)
@@ -40,4 +40,4 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - Nessuna chiamata API reale nei test standard (`@pytest.mark.live`); perf su GPU reale solo locale (`@pytest.mark.perf`).
 - Le pagine pilotate da Playwright hanno la rete esterna bloccata (solo 127.0.0.1 servito).
 - Al termine di ogni fase: test verdi, commit `phase N: <sintesi>`, aggiorna le checkbox qui e in `docs/piano-esecuzione.md`.
-- Repo remoto: `origin` = https://github.com/open-edge-lab/demogen.git (pubblico). **Mai committare file sensibili**: `.gitignore` esclude `.env*`, `*.pem/key/p12/pfx`, `id_rsa*`, `secrets/`, `*credentials*`, `llm_calls/`, `*.log`. Prima di ogni push scansiona la history per pattern di chiavi (`sk-…`, `ghp_…`, `AKIA…`, `BEGIN … PRIVATE KEY`).
+- Repo remoto: `origin` = https://github.com/open-edge-lab/demogen.git (pubblico). **Mai committare file sensibili**: `.gitignore` esclude `demogen.yaml` (config locale con chiave), `.env*`, `*.pem/key/p12/pfx`, `id_rsa*`, `secrets/`, `*credentials*`, `llm_calls/`, `*.log`. Prima di ogni push scansiona la history per pattern di chiavi (`sk-…`, `ghp_…`, `AKIA…`, `BEGIN … PRIVATE KEY`).

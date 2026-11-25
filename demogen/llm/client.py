@@ -77,7 +77,12 @@ class LLMClient:
         prov = config.providers[self.role_cfg.provider]
         self.base_url = base_url_for(prov)
         key = api_key_for(prov)
-        self.api_key = key or "EMPTY"
+        if not key and prov.type == "openrouter":
+            raise ValueError(
+                f"Ruolo '{role}': chiave API mancante per il provider '{self.role_cfg.provider}' "
+                "(imposta providers.<nome>.api_key in demogen.yaml oppure la variabile di api_key_env)"
+            )
+        self.api_key = key or "EMPTY"  # openai_compatible locali accettano una chiave fittizia
         self.model = self.role_cfg.model
         self.max_retries = max_retries
         self.budget = budget

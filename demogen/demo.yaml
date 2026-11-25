@@ -1,11 +1,19 @@
-# demogen.example.yaml — copia in demogen.yaml e compila.
-# Le chiavi API si leggono SOLO da variabili d'ambiente (mai scritte qui).
+# demogen/demo.yaml — template COMMITTABILE: nessun segreto, safe da pushare.
+#
+# La config ufficiale e' `demogen.yaml` (gitignored, mai committata). Creala con
+# `demogen init`, oppure lancia un comando qualsiasi: se manca, demogen la crea da
+# questo template chiedendo la chiave OpenRouter.
+#
+# La chiave puo' stare direttamente in `api_key` (solo in demogen.yaml, locale)
+# oppure in una variabile d'ambiente (`api_key_env`). Se `api_key` resta il
+# placeholder `<...>`, viene ignorata e si usa `api_key_env`.
 
 providers:
   openrouter:
-    type: openrouter                     # base_url: https://openrouter.ai/api/v1
-    api_key_env: OPENROUTER_API_KEY
-    headers:                             # opzionali, attribuzione app
+    type: openrouter                     # base_url di default: https://openrouter.ai/api/v1
+    api_key: "<INSERISCI-OPENROUTER-API-KEY>"   # ← sostituita solo in demogen.yaml (gitignored)
+    api_key_env: OPENROUTER_API_KEY      # usata se api_key resta il placeholder
+    headers:                             # opzionali, attribuzione app su OpenRouter
       HTTP-Referer: https://example.local/demogen
       X-Title: demogen
   local:
@@ -48,3 +56,8 @@ budget:
   max_total_cost_usd: 5.0
   max_wall_minutes: 60
   llm_concurrency: 4
+
+audio:
+  prebuffer_s: 8.0            # prebuffer GPU renderizzato prima del play
+  max_render_ms_prebuffer: 4000.0
+  max_onset_err_ms: 5.0       # gate: onset vs griglia beat

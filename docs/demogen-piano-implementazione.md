@@ -193,7 +193,7 @@ demogen/
 ├── package.json                  # workspace npm: player
 ├── README.md
 ├── CLAUDE.md
-├── demogen.example.yaml
+├── demogen.yaml              # config locale (gitignored), creata da `demogen init` (template demogen/demo.yaml)
 ├── demogen/                      # Python
 │   ├── __init__.py
 │   ├── cli.py                    # typer: init, doctor, models, generate, resume, revise,
@@ -1091,7 +1091,7 @@ Tutti in `demogen/llm/prompts/*.md.j2`, versionati, con test che verificano il r
 - **Accettazione**: demo con audio in cui il kick è allineato al `beatPulse` visivo; errore tra onset e griglia < 5 ms nel dominio dei dati; prebuffer di 8 s entro `max_render_ms_prebuffer` sulla macchina di sviluppo; nessuna discontinuità tra chunk; sincronia A/V verificata a mano con una pagina lampo+beep.
 
 ### Fase 3 — Livello LLM
-- [ ] `config.py` + `demogen init` (scrive `demogen.example.yaml`).
+- [ ] `config.py` + `demogen init` (crea `demogen.yaml` dal template `demogen/demo.yaml`).
 - [ ] `providers.py`, `client.py` (sync e async), retry, logging, redazione.
 - [ ] `capabilities.py` con cache; **[VERIFICARE]** campi del catalogo OpenRouter sulla risposta reale.
 - [ ] `envelope.py`, `structured.py` con i tre livelli e il loop di riparazione.

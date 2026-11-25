@@ -12,7 +12,8 @@ from . import __version__
 from .browser.session import PLAYER_DIR, BrowserSession
 
 app = typer.Typer(
-    help="demogen — generatore offline di demo realtime (motore WebGL2 dual-mode GPU/CPU)"
+    help="demogen — generatore offline di demo realtime (motore WebGL2 dual-mode GPU/CPU)",
+    pretty_exceptions_show_locals=False,  # i locals possono contenere la config (api_key)
 )
 models_app = typer.Typer(help="Interroga i modelli configurati")
 app.add_typer(models_app, name="models")
@@ -190,17 +191,18 @@ def probe(
 
 @app.command()
 def init(
-    out: Path = typer.Option(Path("demogen.example.yaml"), help="Dove scrivere il template"),
+    out: Path = typer.Option(Path("demogen.yaml"), help="Config locale da creare (gitignored)"),
 ) -> None:
-    """Scrive il template di configurazione demogen.example.yaml."""
-    src = Path(__file__).resolve().parent / "example.yaml"
+    """Crea demogen.yaml dal template del pacchetto (demogen/demo.yaml); demogen.yaml e' gitignored."""
+    from .config import DEMO_TEMPLATE, warn_if_not_ignored
+
     if out.exists():
         print(f"{out} esiste già — non sovrascritto.")
         raise typer.Exit(0)
-    shutil.copy(src, out)
-    print(f"Scritto {out}.")
-    print("Prossimi passi: cp demogen.example.yaml demogen.yaml, imposta provider/modelli,")
-    print("e esporta le chiavi API nelle env (es. OPENROUTER_API_KEY). Poi: demogen models check")
+    shutil.copy(DEMO_TEMPLATE, out)
+    warn_if_not_ignored(out)
+    print("Prossimi passi: inserisci la chiave OpenRouter in providers.openrouter.api_key,")
+    print("imposta i modelli in roles/*/model. Poi: demogen models check")
 
 
 @models_app.command("check")
@@ -226,7 +228,11 @@ def models_check(
     )
     print(header)
     for r in roles:
-        client = LLMClient(cfg, r, max_retries=1, budget=budget)
+        try:
+            client = LLMClient(cfg, r, max_retries=1, budget=budget)
+        except ValueError as e:
+            print(f"{r:<14} {'-':<28} ERRORE config: {e}")
+            continue
         caps = detect_capabilities(cfg, r, cache_dir=Path(cfg.cache_dir))
         # 1) testo
         try:
@@ -307,7 +313,7 @@ def _try_config() -> object | None:
     from .config import load_config
 
     try:
-        return load_config(None)
+        return load_config(None, interactive=False)
     except FileNotFoundError:
         return None
 

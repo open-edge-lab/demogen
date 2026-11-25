@@ -192,11 +192,53 @@ def test_redact() -> None:
 
 def test_init_cli(tmp_path: Path) -> None:
     runner = CliRunner()
-    out = tmp_path / "demogen.example.yaml"
+    out = tmp_path / "demogen.yaml"
     res = runner.invoke(app, ["init", "--out", str(out)])
     assert res.exit_code == 0, res.output
     assert out.exists()
     assert "providers:" in out.read_text(encoding="utf-8")
+
+
+def test_init_cli_avvisa_se_il_path_non_e_ignorato(tmp_path: Path) -> None:
+    res = CliRunner().invoke(app, ["init", "--out", str(tmp_path / "altro.yaml")])
+    assert res.exit_code == 0, res.output
+    assert "ATTENZIONE" in res.output
+
+
+def test_client_openrouter_senza_chiave_errore_esplicito() -> None:
+    cfg = Config(
+        providers={"or": ProviderConfig(type="openrouter", api_key="<INSERISCI-OPENROUTER-API-KEY>")},
+        roles={"critic": RoleConfig(provider="or", model="m")},
+    )
+    with pytest.raises(ValueError, match="chiave API mancante"):
+        LLMClient(cfg, "critic")
+
+
+def test_models_check_ruolo_senza_chiave_non_blocca_gli_altri(tmp_path: Path) -> None:
+    with FakeOpenAI([(200, chat_response("OK"))]) as fake:
+        cfg_path = tmp_path / "demogen.yaml"
+        cfg_path.write_text(
+            json.dumps(
+                {
+                    "providers": {
+                        "or": {"type": "openrouter", "api_key_env": "DEMOGEN_TEST_NO_SUCH_KEY"},
+                        "test": {"type": "openai_compatible", "base_url": fake.url},
+                    },
+                    "roles": {
+                        "critic": {"provider": "or", "model": "m"},
+                        "orchestrator": {
+                            "provider": "test", "model": "fake-1", "vision": False, "json_schema": False,
+                        },
+                    },
+                    "log_dir": str(tmp_path / "logs"),
+                    "cache_dir": str(tmp_path / "cache"),
+                }
+            )
+        )
+        res = CliRunner().invoke(app, ["models", "check", "--config", str(cfg_path)])
+        assert res.exit_code == 0, res.output
+        assert "chiave API mancante" in res.output
+        assert "orchestrator" in res.output and "ok" in res.output
 
 
 def test_models_check_cli_con_fake(tmp_path: Path) -> None:

@@ -11,6 +11,8 @@ projects/
 
 # --- mai committare file sensibili (repo público su GitHub) ---
 .env
+# config locale con api_key: mai committare (il template committabile e' demogen/demo.yaml)
+demogen.yaml
 .env.*
 !.env.example
 *.pem

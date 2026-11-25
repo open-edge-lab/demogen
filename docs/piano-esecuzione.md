@@ -112,7 +112,7 @@ Nota: la Fase 3 (livello LLM) è quasi indipendente dal player e può essere svi
 
 ### Fase 3 — Livello LLM
 **Task**
-- `config.py` + `demogen init` (genera `demogen.example.yaml`).
+- `config.py` + `demogen init` (crea `demogen.yaml` dal template `demogen/demo.yaml`).
 - `providers.py` (openai_compatible + openrouter), `client.py` (sync/async, retry backoff+jitter, logging con redazione chiavi, usage/costo), `capabilities.py` con cache 24 h, `envelope.py`, `structured.py` (3 livelli + loop riparazione max 2), `budget.py`.
 - `demogen models check`.
 - Test con server finto OpenAI-compatible + fixture registrate: risposte valide, JSON malformato, GLSL senza recinto, 429 con retry, timeout.

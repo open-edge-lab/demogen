@@ -18,7 +18,9 @@ def base_url_for(p: ProviderConfig) -> str:
 
 
 def api_key_for(p: ProviderConfig, env: dict | None = None) -> str | None:
-    """Chiave API solo da env (mai da file di config)."""
+    """Chiave API: prima `api_key` dal file (solo demogen.yaml, gitignored), poi env."""
+    if p.api_key is not None:
+        return p.api_key.get_secret_value()
     env = os.environ if env is None else env
     if p.api_key_env:
         return env.get(p.api_key_env)
