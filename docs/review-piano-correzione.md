@@ -38,7 +38,8 @@ fine di ogni batch.
 
 ### Come riprendere
 
-- **Branch:** `git checkout fix/review-batch-a`. `main` è fermo a `1520fcb`; il merge non è ancora stato fatto.
+- **Branch:** tutto è su `main`. Il 2026-11-25 `fix/review-batch-a` è stato unito con un fast-forward
+  (`1520fcb` → `6bff017`) e poi cancellato.
 - **Ambiente:** dal 2026-11-25 sera `uv` è nel PATH (`C:\Users\Andrea\.local\bin\uv.exe`); il `.venv`
   creato su un'altra macchina è stato rigenerato con Python 3.13 (`uv sync --python 3.13`). Per esempio:
   - `uv run pytest -q`
