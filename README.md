@@ -20,6 +20,19 @@ npm run build                        # build del player (player/dist/)
 uv run demogen doctor                # verifica ambiente + renderer GPU/CPU
 ```
 
+## Menu (Windows)
+
+```powershell
+.\run.ps1                       # menu interattivo (oppure doppio click su run.cmd)
+.\run.ps1 -Action elenco        # elenco delle voci, eseguibili anche senza menu
+.\run.ps1 -Action chiudi -Yes   # chiude i processi rimasti aperti (browser di Playwright, python, node)
+```
+
+Voci: genera (LLM reale o `--fake`), riprendi, revisiona, report, apri la demo; esempi (demo principale
+in tempo reale, play, inspect, bundle, pagine web); setup, doctor, config LLM, test, calibrate; mostra e
+chiudi i processi di demogen. Con `-Action` le domande prendono il default e le conferme (spesa,
+chiusura, apertura del browser) valgono sì solo con `-Yes`.
+
 ## Configurazione LLM
 
 ```bash

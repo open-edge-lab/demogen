@@ -29,6 +29,7 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - Inspect: `uv run demogen inspect examples/timeline.json --gpu swiftshader` (metriche+gate+fogli in `out/inspect_*/`)
 - Calibrate: `uv run demogen calibrate --gpu hardware` (ms dei 4 shader examples → `out/calibrate.json`)
 - Generate (pipeline LLM completa): `uv run demogen generate "<prompt>" --project projects/x [--fake] [--duration 30] [--bpm 120] [--gpu hardware|swiftshader]` → `out/*.demo|*.html` + `report.md`; `resume <progetto> [--fake]` (niente chiamate già fatte), `revise <progetto> --scene s1 --note "nota" [--fake]` (versione max+1), `report <progetto>`
+- Menu Windows: `.\run.ps1` (o doppio click su `run.cmd`): generate/resume/revise/report, esempi (play, inspect, bundle, web), setup/test, mostra e chiudi i processi; `-Action <nome> [-Yes]` senza menu (`-Action elenco`). File in UTF-8 **con BOM** e CRLF (PowerShell 5.1)
 - Libreria web: il player è esportato da `player/src/index.ts` — build ESM/IIFE/types con `npm run build --workspace player`; esempi in `examples/web/` (`index.html` demo, `8bit.html` embed 8bit zero-banda); doc `docs/player-web-library.md`
 - Rigenera vettori timeline: `uv run python scripts/gen_vectors.py`
 
