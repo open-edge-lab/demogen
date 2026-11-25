@@ -23,6 +23,7 @@ export interface DemoPayload {
   text?: string;
   post?: { bloom?: { threshold: number; intensity: number; radius: number } };
   quality?: { min_scale?: number; target_fps?: number };
+  audio?: string; // Fase 2: sorgente GLSL con mainAudio(out vec4, in float t)
 }
 
 export const MAX_PAYLOAD_BYTES = 1024 * 1024;
@@ -60,6 +61,12 @@ export function parsePayload(json: unknown, rawBytes?: number): DemoPayload {
   }
   if (p.render?.profile !== "modern" && p.render?.profile !== "retro") {
     throw new Error("render.profile invalido");
+  }
+  if (p.audio !== undefined) {
+    if (typeof p.audio !== "string") throw new Error("audio deve essere una stringa GLSL");
+    if (new TextEncoder().encode(p.audio).length > MAX_SCENE_BYTES) {
+      throw new Error("audio troppo grande");
+    }
   }
   return p;
 }

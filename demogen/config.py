@@ -59,6 +59,12 @@ class RealtimeConfig(BaseModel):
     )
 
 
+class AudioConfig(BaseModel):
+    prebuffer_s: float = 8.0
+    max_render_ms_prebuffer: float = 4000.0
+    max_onset_err_ms: float = 5.0  # onset vs griglia beat (dominio dei dati)
+
+
 class SafetyConfig(BaseModel):
     flash_max_per_s: int = 3
     red_flash: bool = True
@@ -86,6 +92,7 @@ class Config(BaseModel):
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
     realtime: RealtimeConfig = Field(default_factory=RealtimeConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
+    audio: AudioConfig = Field(default_factory=AudioConfig)
     bundle: BundleLimits = Field(default_factory=BundleLimits)
     preview: PreviewConfig = Field(default_factory=PreviewConfig)
     log_dir: str = ".demogen_logs/llm_calls"

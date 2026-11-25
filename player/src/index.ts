@@ -10,4 +10,6 @@ export { QualityController } from "./quality";
 export { rendererInfo, isSoftwareRenderer } from "./gl";
 export type { DemogenInfo } from "./gl";
 export { buildHeader, buildFragment } from "./programs";
+
+export { AudioEngine, buildAudioHeader, buildAudioFragment, planChunkStarts, AUDIO_BLOCK_SAMPLES } from "./audio";
 export { DemogenPlayerElement } from "./element";

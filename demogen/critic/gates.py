@@ -74,6 +74,17 @@ def run_gates(metrics: dict[str, Any], cfg: Config | None = None) -> list[Issue]
                 "compilazione parallela, prebuffer audio breve")
 
     # --- dimensione ---
+    # --- audio (Fase 2): onset allineati alla griglia beat ---
+    am = metrics.get("audio")
+    if am:
+        if am.get("clipped"):
+            add("major", "audio in clip (peak >= 0.999)", "abbassa i guadagni o usa soft clip (tanh)")
+        obe = am.get("onset_vs_beat") or {}
+        mean_err = obe.get("mean_abs_err_ms")
+        if mean_err is not None and mean_err > cfg.audio.max_onset_err_ms:
+            add("major", f"onset audio non allineati al beat: errore medio {mean_err:.1f} ms "
+                f"(> {cfg.audio.max_onset_err_ms} ms)", "ancorare kick/snare a floor(t/beatDur), non a iTime libero")
+
     sizes = metrics.get("sizes")
     if sizes:
         gz = sizes.get("payload_gzip_bytes", 0)

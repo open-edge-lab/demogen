@@ -21,6 +21,7 @@ def build_payload_from_sources(
     style_src: str = "",
     do_minify: bool = True,
     math_srcs: dict[str, str] | None = None,
+    audio_src: str = "",
 ) -> dict:
     """Payload .demo da sorgenti in memoria (pipeline).
 
@@ -38,11 +39,16 @@ def build_payload_from_sources(
     }
     entry = "\n".join(merged.values()) + "\n" + style_src
     common = treeshake(entry, lib) + "\n" + style_src
+    if audio_src:
+        # la lib serve anche allo shader audio: treeshake dedicato e payload audio self-contained
+        audio_src = treeshake(audio_src, lib) + "\n" + audio_src
     if do_minify:
         common = minify(common)
         merged = {k: minify(v) for k, v in merged.items()}
+        if audio_src:
+            audio_src = minify(audio_src)
 
-    return _finalize_payload(spec, bpm, bpb, scenes_spec, merged, common)
+    return _finalize_payload(spec, bpm, bpb, scenes_spec, merged, common, audio_src)
 
 
 def build_payload(spec: dict, base_dir: Path, do_minify: bool = True) -> dict:
@@ -56,11 +62,15 @@ def build_payload(spec: dict, base_dir: Path, do_minify: bool = True) -> dict:
     if style_path:
         style_text = (base_dir / style_path).read_text(encoding="utf-8")
         style_src, _ = preprocess(style_text, base_dir=base_dir)
-    return build_payload_from_sources(spec, scenes_src, style_src, do_minify)
+    audio_src = ""
+    audio_path = spec.get("audio")
+    if audio_path:
+        audio_src, _ = preprocess((base_dir / audio_path).read_text(encoding="utf-8"), base_dir=base_dir)
+    return build_payload_from_sources(spec, scenes_src, style_src, do_minify, audio_src=audio_src)
 
 
 def _finalize_payload(spec: dict, bpm: float, bpb: int, scenes_spec: list,
-                      scenes_src: dict[str, str], common: str) -> dict:
+                      scenes_src: dict[str, str], common: str, audio_src: str = "") -> dict:
     last = scenes_spec[-1]
     duration_s = (last["start_bar"] + last["bars"]) * bpb * 60.0 / bpm
     payload = {
@@ -93,6 +103,8 @@ def _finalize_payload(spec: dict, bpm: float, bpb: int, scenes_spec: list,
         "post": spec.get("post", {}),
         "quality": spec.get("quality", {"min_scale": 0.5, "target_fps": 60}),
     }
+    if audio_src:
+        payload["audio"] = audio_src
     DemoPayloadSpec.model_validate(payload)  # validazione completa lato Python
     return payload
 

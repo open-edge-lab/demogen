@@ -103,3 +103,4 @@ class DemoPayloadSpec(BaseModel):
     text: str | None = None
     post: dict = Field(default_factory=dict)
     quality: dict = Field(default_factory=lambda: {"min_scale": 0.5, "target_fps": 60})
+    audio: str = ""  # Fase 2: sorgente GLSL con mainAudio(out vec4, in float t)

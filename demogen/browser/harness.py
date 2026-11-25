@@ -91,3 +91,10 @@ class Harness:
             "(o) => window.__demogen.stats(o)",
             {"times": times, "width": width, "height": height},
         )
+
+    def render_audio(self, t0: float, blocks: int) -> list[list[float]]:
+        """Fase 2: renderizza `blocks` blocchi audio GPU da t0 (s); torna sample stereo interleaved."""
+        return self.page.evaluate(
+            "(o) => window.__demogen.renderAudio(o)",
+            {"t0": t0, "blocks": blocks},
+        )

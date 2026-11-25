@@ -23,3 +23,23 @@ describe("API pubblica @demogen/player", () => {
     expect(api.DemogenPlayerElement.observedAttributes).toContain("src");
   });
 });
+
+describe("audio engine (Fase 2)", () => {
+  it("planChunkStarts: chunk consecutivi senza gap", async () => {
+    const { planChunkStarts, AUDIO_BLOCK_SAMPLES } = await import("../src/audio");
+    const chunkDur = AUDIO_BLOCK_SAMPLES / 44100;
+    const starts = planChunkStarts(1.0, chunkDur, 4, 10.0);
+    expect(starts).toHaveLength(4);
+    for (let i = 1; i < starts.length; i++) {
+      expect(starts[i] - starts[i - 1]).toBeCloseTo(chunkDur, 9);
+    }
+    expect(starts[0]).toBeCloseTo(10.0, 9);
+  });
+
+  it("buildAudioFragment include il mapping sample globale (niente gap tra chunk)", async () => {
+    const { buildAudioFragment, buildAudioHeader } = await import("../src/audio");
+    const frag = buildAudioFragment(buildAudioHeader(120), "", "void mainAudio(out vec4 o, in float t){ o=vec4(t); }");
+    expect(frag).toContain("uBlockStart + idx");
+    expect(frag).toContain("void mainAudio(out vec4 o, in float t);");
+  });
+});

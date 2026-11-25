@@ -176,5 +176,20 @@ function state(tl: unknown, t: number): unknown {
   return stateAt(tl as never, t);
 }
 
-const api = { load, capture, cellSequence, stats, profile, info, state };
+/** Fase 2: renderizza `blocks` blocchi audio a partire dal tempo t0 (secondi).
+ *  Ritorna array di Float32Array stereo (interleaved L,R). */
+function renderAudio(opts: { t0: number; blocks: number }): number[][] {
+  if (!current) throw new Error("load() prima");
+  const a = current.player.audio;
+  if (!a) throw new Error("payload senza audio");
+  const chunkDur = (256 * 64) / 44100; // AUDIO_BLOCK_SAMPLES / sampleRate (fallback 44100)
+  const first = Math.floor(opts.t0 / (a.chunkDur || chunkDur));
+  const out: number[][] = [];
+  for (let i = 0; i < opts.blocks; i++) {
+    out.push(Array.from(a.renderBlock(first + i)));
+  }
+  return out;
+}
+
+const api = { load, capture, cellSequence, stats, profile, info, state, renderAudio };
 (window as unknown as { __demogen: typeof api }).__demogen = api;

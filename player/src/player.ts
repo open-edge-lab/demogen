@@ -7,6 +7,7 @@ import { parsePayload, textToUniform, DemoPayload } from "./format";
 import { createGL, rendererInfo, DemogenInfo, isSoftwareRenderer } from "./gl";
 import { Post, BloomParams } from "./post";
 import { compileAll, SceneDef } from "./programs";
+import { AudioEngine, buildAudioHeader, buildAudioFragment } from "./audio";
 import { QualityController, QualityState, DEFAULT_LIMITS } from "./quality";
 import { stateAt, Timeline } from "./timeline";
 
@@ -31,6 +32,7 @@ export class Player {
   private startMs = 0;
   private offsetS = 0;
   private lost = false;
+  audio: AudioEngine | null = null;
   private lastQuality: QualityState | null = null;
   private internalW = 0;
   private internalH = 0;
@@ -107,6 +109,21 @@ export class Player {
     this.compileMs = performance.now() - t0;
     this.compositor = new Compositor(this.gl, 640, 360);
     this.post = new Post(this.gl, this.compositor, 640, 360);
+    // Fase 2: audio GPU (se il payload ha `audio`); sblocco su primo gesto (policy autoplay)
+    if (p.audio) {
+      // p.audio è self-contained (lib treeshaked + sorgente): no common video, niente doppioni
+      const frag = buildAudioFragment(buildAudioHeader(tl.bpm), "", p.audio);
+      this.audio = new AudioEngine(this.gl, frag, tl.bpm, {
+        prebufferS: 8,
+        maxRenderMsPerFrame: 2,
+      });
+      const unlock = () => {
+        void this.audio?.unlock();
+        if (this.audio && !this.audio.locked && this.playing) this.audio.start(this.currentTime());
+      };
+      window.addEventListener("pointerdown", unlock, { once: false });
+      window.addEventListener("keydown", unlock, { once: false });
+    }
     if (this.opts.autoPlay !== false) this.play();
     this.opts.onReady?.();
   }
@@ -123,12 +140,14 @@ export class Player {
     if (this.playing || this.lost) return;
     this.playing = true;
     this.startMs = performance.now() - this.offsetS * 1000;
+    if (this.audio && !this.audio.locked) this.audio.start(this.currentTime());
     const loop = (now: number) => {
       if (!this.playing) return;
       this.rafId = requestAnimationFrame(loop);
       if (!this.quality.shouldRender(now)) return;
       const t0 = performance.now();
       this.renderFrameAt(this.currentTime());
+      if (this.audio) this.audio.pump(2); // render audio in background, ≤ 2 ms/frame
       const frameMs = performance.now() - t0;
       this.quality.update(frameMs, now);
       const q = this.quality.state;
@@ -143,14 +162,20 @@ export class Player {
   pause(): void {
     this.playing = false;
     cancelAnimationFrame(this.rafId);
+    this.audio?.stop();
   }
 
   seek(t: number): void {
     this.offsetS = Math.max(0, Math.min(this.durationS, t));
     this.startMs = performance.now() - this.offsetS * 1000;
+    this.audio?.seek(this.offsetS);
   }
 
   currentTime(): number {
+    if (this.audio) {
+      const a = this.audio.now();
+      if (a !== null) return Math.min(a, this.durationS);
+    }
     return this.offsetS + (performance.now() - this.startMs) / 1000;
   }
 

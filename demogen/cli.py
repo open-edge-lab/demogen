@@ -362,6 +362,18 @@ def inspect(
             prof = h.profile(times[:8], width, height, repeats=3)
         cells = h.cell_sequence(0.0, min(duration, 10.0), 10, 160, 90)
 
+        # Fase 2: metriche audio se il payload ha `audio`
+        audio_m = None
+        audio_x = None
+        if payload.get("audio"):
+            from .critic.metrics_audio import audio_metrics as _audio_metrics
+
+            sr = 44100
+            blocks = int(np.ceil(duration * sr / 16384)) + 1
+            raw = h.render_audio(0.0, blocks)
+            audio_x = np.concatenate([np.asarray(b, dtype=np.float64) for b in raw])
+            audio_m = _audio_metrics(audio_x, sr, float(payload["meta"]["bpm"]), channels=2)
+
     frames_np = [np.asarray(Image.open(io.BytesIO(p)).convert("RGB")) for p in pngs]
     vm = video_metrics(frames_np, stats, loop=bool(payload["meta"].get("loop")))
     pf = perf_profile(
@@ -388,6 +400,8 @@ def inspect(
                   "payload_gzip_bytes": len(_gzip.compress(raw_demo, 9))},
         "gpu": info["renderer"],
     }
+    if audio_m is not None:
+        metrics["audio"] = audio_m
     issues = run_gates(metrics, cfg_obj)
 
     rdir = out / f"inspect_{file.stem}"
@@ -398,6 +412,10 @@ def inspect(
     diff_heatmap(frames_np, rdir / "diff.png")
     perf_chart({float(k): v for k, v in prof["samples"].items()},
                cfg_obj.realtime.profiles["modern"]["p95"], rdir / "perf.png")
+    if audio_m is not None and audio_x is not None:
+        from .critic.metrics_audio import spectrogram_png
+
+        spectrogram_png(audio_x, 44100, float(payload["meta"]["bpm"]), rdir / "spectrogram.png")
     (rdir / "metrics.json").write_text(_json.dumps(metrics, indent=1, default=str), encoding="utf-8")
     (rdir / "issues.json").write_text(
         _json.dumps([i.model_dump() for i in issues], indent=1), encoding="utf-8"
@@ -409,6 +427,11 @@ def inspect(
     print(f"  perf:  p95={pf.p95_ms:.2f} ms  mean={pf.mean_ms:.2f} ms  "
           f"load={pf.gpu_load_est:.0%}  ({pf.method})")
     print(f"  flash: passed={fl.passed} max/s={fl.max_flashes_per_s:.1f} red={fl.red_flash_events}")
+    if audio_m is not None:
+        obe = audio_m["onset_vs_beat"]
+        print(f"  audio: rms={audio_m['rms']:.3f} peak={audio_m['peak']:.3f} "
+              f"onsets={obe['n_onsets']} err_vs_beat mean="
+              f"{obe['mean_abs_err_ms'] if obe['mean_abs_err_ms'] is not None else float('nan'):.2f} ms")
     print(f"  gate:  {len(issues)} issue "
           f"({sum(1 for i in issues if i.severity == 'blocker')} blocker, "
           f"{sum(1 for i in issues if i.severity == 'major')} major)")

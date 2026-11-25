@@ -1,0 +1,5 @@
+
+audio:
+  prebuffer_s: 8.0            # prebuffer GPU renderizzato prima del play
+  max_render_ms_prebuffer: 4000.0
+  max_onset_err_ms: 5.0       # gate: onset vs griglia beat
