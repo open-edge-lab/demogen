@@ -9,7 +9,7 @@ CI, docs). Contiene lo stato, i problemi ancora aperti e i batch di correzione d
 |-------|-----------|-------|
 | A | Config / `api_key` (il WIP non committato) | ✅ fatto: commit `377ca05` sul branch `fix/review-batch-a`, suite 88/88 |
 | B | Integrità di test e CI | ✅ fatto: fixture `harness` (skip solo sull'avvio, fail con `CI=true`), golden obbligatori, sessione browser robusta; xfail strict per #21, #23, #32 |
-| C | Sicurezza (bundle HTML, path, sandbox dell'oracolo) | da fare |
+| C | Sicurezza (bundle HTML, path, sandbox dell'oracolo) | ✅ fatto: escape di titolo e payload, slug per i file, path e id confinati, runner `-I -c`, clamp dei claim |
 | D | Correttezza della pipeline LLM | da fare |
 | E | Gate del critic (flash, perf, flicker) | da fare |
 | F | Player TS | da fare |

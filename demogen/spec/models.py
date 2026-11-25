@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -10,9 +10,13 @@ RenderProfile = Literal["modern", "retro"]
 PerfTier = Literal["light", "medium", "heavy"]
 Transition = Literal["cut", "crossfade", "flash", "fade_black"]
 
+# gli id delle scene diventano path (scenes/<id>/...): niente separatori, `..` o `:`
+SCENE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,32}$"
+SceneId = Annotated[str, Field(pattern=SCENE_ID_PATTERN)]
+
 
 class SceneSlot(BaseModel):
-    id: str
+    id: SceneId
     start_bar: float
     bars: float
     transition_in: Transition = "cut"
@@ -26,7 +30,7 @@ class Timeline(BaseModel):
 
 
 class SceneBrief(BaseModel):
-    id: str
+    id: SceneId
     title: str
     description: str  # cosa si vede
     motion: str  # come si muove, legame col beat

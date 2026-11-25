@@ -20,8 +20,6 @@ import json
 import math
 import subprocess
 import sys
-import tempfile
-from pathlib import Path
 
 # nome python-safe -> nome GLSL (il codegen usa questa tabella)
 FUNCTIONS: dict[str, str] = {
@@ -122,9 +120,7 @@ F = {
 }
 C = {"pi": math.pi, "e": math.e, "tau": math.tau}
 
-def evaluate(expr_src, env):
-    code = compile(ast.parse(expr_src, mode="eval"), "<safe>", "eval")
-    names = {n.id for n in ast.walk(ast.parse(expr_src, mode="eval")) if isinstance(n, ast.Name)}
+def evaluate(code, names, env):
     g = {"__builtins__": {}}
     for n in names:
         if n in C:
@@ -139,10 +135,13 @@ def evaluate(expr_src, env):
     return float(eval(code, g, {}))  # noqa: S307 - AST validata dalla whitelist
 
 data = json.load(sys.stdin)
+tree = ast.parse(data["expr"], mode="eval")
+code = compile(tree, "<safe>", "eval")
+names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
 out = []
-for item in data["items"]:
+for env in data["envs"]:
     try:
-        out.append({"ok": True, "value": evaluate(item["expr"], item["env"])})
+        out.append({"ok": True, "value": evaluate(code, names, env)})
     except Exception as exc:  # il subprocess isola qualsiasi errore di dominio
         out.append({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
 print(json.dumps(out))
@@ -155,20 +154,16 @@ def eval_points(expr: str, points: list[dict[str, float]], timeout_s: float = 10
     Ritorna float (None dove l'eval di dominio è fallita, es. sqrt di negativo).
     """
     parse_safe(expr)
-    items = [{"expr": expr, "env": {k: float(v) for k, v in p.items()}} for p in points]
-    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as f:
-        f.write(_RUNNER)
-        runner = f.name
-    try:
-        proc = subprocess.run(
-            [sys.executable, runner],
-            input=json.dumps({"items": items}),
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-        )
-    finally:
-        Path(runner).unlink(missing_ok=True)
+    envs = [{k: float(v) for k, v in p.items()} for p in points]
+    # -I (isolated): niente cwd/script dir in sys.path, niente PYTHON* env, niente site utente:
+    # un json.py/math.py lasciato nella cartella corrente non viene importato. -c: nessun file temp.
+    proc = subprocess.run(
+        [sys.executable, "-I", "-c", _RUNNER],
+        input=json.dumps({"expr": expr, "envs": envs}),
+        capture_output=True,
+        text=True,
+        timeout=timeout_s,
+    )
     if proc.returncode != 0:
         raise UnsafeExpressionError(f"subprocess fallita: {proc.stderr.strip()[:300]}")
     results = json.loads(proc.stdout.strip().splitlines()[-1])

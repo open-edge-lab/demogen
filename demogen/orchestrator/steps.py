@@ -20,6 +20,7 @@ from ..critic.sheets import burst_strip, contact_sheet, diff_heatmap
 from ..glsl.treeshake import load_library, treeshake
 from ..llm.envelope import parse_envelope
 from ..llm.structured import chat_structured
+from ..project.store import slugify
 from ..spec.models import DemoSpec, SceneBrief, ShaderSubmission
 from . import prompts as P
 from .selection import select_best
@@ -387,7 +388,7 @@ def s9_bundle(ctx, spec: DemoSpec, style_src: str, post: dict) -> dict:
             math_srcs[scene.id] = math_path.read_text(encoding="utf-8")
 
     spec_dict = {
-        "name": spec.title.lower().replace(" ", "-"),
+        "name": spec.title,  # titolo leggibile (meta.title, escaped nell'HTML)
         "bpm": spec.timeline.bpm,
         "beats_per_bar": spec.timeline.beats_per_bar,
         "loop": spec.loop,
@@ -412,6 +413,6 @@ def s9_bundle(ctx, spec: DemoSpec, style_src: str, post: dict) -> dict:
     payload = build_payload_from_sources(
         spec_dict, best_srcs, style_src, do_minify=True, math_srcs=math_srcs
     )
-    name = spec_dict["name"]
+    name = slugify(spec.title)  # il titolo viene dall'LLM: mai usarlo crudo come nome file
     sizes = write_bundle(payload, ctx.project.path / "out", name)
     return {"payload": payload, "sizes": sizes, "name": name}

@@ -45,14 +45,63 @@ def _grad(f: dict[tuple, float], base: dict[str, float], h: float = 1e-4) -> tup
     return gx, gy
 
 
+MIN_SAMPLES, MAX_SAMPLES = 8, 4096
+MAX_TOL, MAX_TOL_GRAD = 1e-2, 0.1
+MAX_ABS_DOMAIN = 1e4
+
+
+def _finite(claim: dict, key: str, default: float | None = None) -> float:
+    """Float finito da `claim[key]` (ValueError se assente senza default, non numerico o inf/nan)."""
+    if key not in claim:
+        if default is None:
+            raise ValueError(f"claim senza '{key}'")
+        return default
+    v = claim[key]
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise ValueError(f"claim '{key}' non numerico: {v!r}")
+    v = float(v)
+    if not math.isfinite(v):
+        raise ValueError(f"claim '{key}' non finito: {v}")
+    return v
+
+
+def _claim_params(claim: dict) -> tuple[list[list[float]], float, float, int]:
+    """Valida e limita i parametri decisi dall'LLM PRIMA di costruire qualsiasi punto.
+
+    - samples clampato a [8, 4096] (1e8 manderebbe in OOM il processo padre);
+    - tol in (0, 1e-2] e tol_grad in (0, 0.1]: una tolleranza enorme farebbe passare qualsiasi claim;
+    - domain: 1..3 coppie finite [lo, hi] con lo < hi e |v| <= 1e4.
+    """
+    if not isinstance(claim, dict):
+        raise ValueError("claim non è un oggetto")
+    domain = claim.get("domain", [[-2.0, 2.0], [-2.0, 2.0]])
+    if not isinstance(domain, list) or not 1 <= len(domain) <= 3:
+        raise ValueError(f"domain deve avere 1..3 intervalli: {domain!r}")
+    dom: list[list[float]] = []
+    for iv in domain:
+        if not isinstance(iv, (list, tuple)) or len(iv) != 2:
+            raise ValueError(f"intervallo non valido: {iv!r}")
+        lo, hi = (_finite({"v": x}, "v") for x in iv)
+        if not lo < hi or max(abs(lo), abs(hi)) > MAX_ABS_DOMAIN:
+            raise ValueError(f"intervallo non valido: [{lo}, {hi}]")
+        dom.append([lo, hi])
+    tol = _finite(claim, "tol", 1e-3)
+    tol_grad = _finite(claim, "tol_grad", 5e-2)
+    if tol <= 0 or tol_grad <= 0:
+        raise ValueError("tol e tol_grad devono essere > 0")
+    n = int(_finite(claim, "samples", 64))
+    return dom, min(tol, MAX_TOL), min(tol_grad, MAX_TOL_GRAD), max(MIN_SAMPLES, min(n, MAX_SAMPLES))
+
+
 def verify_claim(req: MathRequest, seed: int = 42) -> VerifyResult:
-    """Verifica un MathRequest. Ritorna VerifyResult con ok/detail/max_err."""
+    """Verifica un MathRequest. Ritorna VerifyResult con ok/detail/max_err.
+
+    ValueError se i parametri del claim non sono validi (l'oracolo lo registra come rifiuto).
+    """
     expr = req.expr
     claim = req.claim
     names = used_names(expr)
-    domain = claim.get("domain", [[-2.0, 2.0], [-2.0, 2.0]])
-    tol = float(claim.get("tol", 1e-3))
-    n = int(claim.get("samples", 64))
+    domain, tol, tol_grad, n = _claim_params(claim)
 
     if "t" in names:
         # dominio temporale 1D: domain = [[t0, t1]]
@@ -93,7 +142,7 @@ def verify_claim(req: MathRequest, seed: int = 42) -> VerifyResult:
         has_pos = any(v > 0 for v in fvals)
         max_err = max(errs) if errs else None
         ok_sign = (not inside_neg) or (has_neg and has_pos)
-        ok_grad = max_err is not None and max_err <= float(claim.get("tol_grad", 5e-2))
+        ok_grad = max_err is not None and max_err <= tol_grad
         return VerifyResult(
             ok=ok_sign and ok_grad,
             kind=kind,
@@ -104,7 +153,7 @@ def verify_claim(req: MathRequest, seed: int = 42) -> VerifyResult:
         )
 
     if kind == "lipschitz":
-        bound = float(claim["bound"])
+        bound = _finite(claim, "bound")
         pts = base_pts * 2  # doppie per formare coppie
         vals = eval_points(expr, pts)
         pairs = list(zip(pts[::2], vals[::2], pts[1::2], vals[1::2]))
@@ -125,7 +174,7 @@ def verify_claim(req: MathRequest, seed: int = 42) -> VerifyResult:
         )
 
     if kind == "periodic_path":
-        period = float(claim["period"])
+        period = _finite(claim, "period")
         t0, t1 = domain[0]
         pts = [{"t": random.Random(seed + i).uniform(t0, t1)} for i in range(n)]
         shifted = [{"t": p["t"] + period} for p in pts]

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import gzip
+import html as html_mod
 import json
 from pathlib import Path
 
 from ..glsl.minify import minify
 from ..glsl.preprocessor import preprocess
 from ..glsl.treeshake import load_library, treeshake
+from ..project.store import slugify
 from ..spec.models import DemoPayloadSpec
 
 LIB_DIR = Path(__file__).resolve().parents[1] / "glsl" / "lib"
@@ -109,24 +111,38 @@ def _finalize_payload(spec: dict, bpm: float, bpb: int, scenes_spec: list,
     return payload
 
 
+def script_json(obj: object) -> str:
+    """JSON sicuro dentro <script>: `<` → `\\u003c` neutralizza `</script>` e `<!--`.
+
+    Un `<` può comparire solo dentro le stringhe JSON, dove `\\u003c` è equivalente
+    sia in JSON sia in JS.
+    """
+    return json.dumps(obj, ensure_ascii=False).replace("<", "\\u003c")
+
+
 def write_bundle(payload: dict, out_dir: Path, name: str) -> dict:
-    """Scrive out/<name>.demo e out/<name>.html (standalone, no rete). Ritorna le taglie."""
+    """Scrive out/<name>.demo e out/<name>.html (standalone, no rete). Ritorna le taglie.
+
+    `name` può venire dall'LLM: diventa uno slug, quindi niente `/`, `..` o `:`.
+    """
+    name = slugify(name)
     out_dir.mkdir(parents=True, exist_ok=True)
     demo_path = out_dir / f"{name}.demo"
     raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     demo_path.write_bytes(raw)
 
     player_js = (PLAYER_DIST / "demogen-player.min.js").read_text(encoding="utf-8")
+    title = html_mod.escape(str(payload["meta"]["title"]))
     html = (
         "<!doctype html>\n<html><head><meta charset=\"utf-8\">"
-        f"<title>{payload['meta']['title']}</title>"
+        f"<title>{title}</title>"
         "<style>html,body{margin:0;height:100%;background:#000}"
         "canvas{width:100vw;height:100vh;display:block}"
         "#hud{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;"
         "color:#eee;font:14px monospace;cursor:pointer}</style></head><body>"
         "<canvas id=\"c\"></canvas><div id=\"hud\">click per avviare</div>"
         f"<script>{player_js}</script>"
-        f"<script>const PAYLOAD={json.dumps(payload, ensure_ascii=False)};</script>"
+        f"<script>const PAYLOAD={script_json(payload)};</script>"
         "<script>"
         "document.getElementById('hud').addEventListener('click',()=>{"
         "document.getElementById('hud').remove();"
