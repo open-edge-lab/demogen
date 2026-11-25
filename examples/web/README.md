@@ -5,15 +5,18 @@ standard: nessun build proprietary, solo un `<script type="module">`.
 
 ## Avvio
 
-Dalla root del repo:
+Le pagine funzionano **anche da `file://`** (doppio click sull'HTML): usano lo
+script classico `player/dist/demogen-player.min.js` e il payload inline nel tag
+(no `fetch`, no moduli ESM — entrambi bloccati da Chrome su `file://`).
 
 ```bash
-npm run build --workspace player     # genera player/dist/demogen-player.esm.js (+ .min.js + types)
-python -m http.server 8000           # qualsiasi HTTP server statico va bene
-# apri http://localhost:8000/examples/web/
+npm run build --workspace player     # genera player/dist/ (esm + min.js + types)
+# poi apri direttamente:
+#   examples/web/8bit.html   → embed 8bit
+#   examples/web/index.html  → demo M1 fullscreen
+# In alternativa, via HTTP server (utile per la variante ESM con fetch):
+#   python -m http.server 8000  →  http://localhost:8000/examples/web/
 ```
-
-> Serve un HTTP server: `fetch("./demo.demo.json")` non funziona da `file://`.
 
 ## File
 

@@ -27,6 +27,14 @@ export class DemogenPlayerElement extends ElementBase {
       const res = await fetch(src);
       payload = await res.json();
     } else {
+      // Il parser upgrada l'elemento quando trova il tag di apertura, prima che i
+      // figli (lo <script type="application/json">) siano nel DOM: se il documento
+      // è ancora in parsing, aspetta DOMContentLoaded prima di leggerlo.
+      if (document.readyState === "loading") {
+        await new Promise<void>((resolve) =>
+          window.addEventListener("DOMContentLoaded", () => resolve(), { once: true })
+        );
+      }
       const inline = this.querySelector('script[type="application/json"]');
       payload = inline ? JSON.parse(inline.textContent ?? "null") : null;
     }
