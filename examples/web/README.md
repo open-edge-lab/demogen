@@ -29,6 +29,12 @@ npm run build --workspace player     # genera player/dist/ (esm + min.js + types
   rendering realtime sulla GPU del visitatore → zero banda, zero video.
 - `retro8bit.timeline.json` — spec usata per rigenerare `8bit.demo.json`:
   `uv run demogen bundle examples/web/retro8bit.timeline.json --name 8bit --out /tmp/x && cp /tmp/x/8bit.demo examples/web/8bit.demo.json`
+- `penguin.html` — demo test **"penguin walk"**: pinguino pixel-art con camminata goffa
+  che attraversa la scena, si ferma, salta gridando "HI!", e torna indietro in loop (16 s).
+  Palette pastello, gate epilettico verde (`demogen inspect`: flash passed, 0 blocker).
+  Sorgenti: `examples/penguin.timeline.json` + `examples/shaders/penguin_walk.glsl` +
+  `examples/penguin_common.glsl`; payload `penguin.demo.json` (~3,3 KB gzip), rigenerabile con
+  `uv run demogen bundle examples/penguin.timeline.json --out /tmp/x && cp /tmp/x/penguin-walk.demo examples/web/penguin.demo.json`
 
 ## API esportata (`@demogen/player`)
 
