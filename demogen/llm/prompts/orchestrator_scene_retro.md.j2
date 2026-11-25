@@ -1,0 +1,18 @@
+# Role: orchestrator — write scene {{ scene.id }} (retro profile, 320x180)
+
+Demo: {{ spec.title }} — {{ spec.art_direction }}
+Scene brief:
+- title: {{ scene.title }}
+- description: {{ scene.description }}
+- motion: {{ scene.motion }}
+- techniques: {{ scene.techniques | join(", ") }}
+- perf_tier: {{ scene.perf_tier }}
+
+Retro rules: iResolution is the fixed internal resolution, fragCoord in those pixels. Use 2D effects from `retro/effects.glsl` (plasma2, starfield, copperBar), `retro/font.glsl` for text scrollers (drawText with uText), palette via finalize()/retroFinalize(). Budget: p95 <= {{ budget_p95 }} ms at {{ res }}.
+Light 3D only if perf_tier=light. No heavy raymarching.
+
+Anti-cliché (retro): no generic full-screen rainbow plasma, no plain sine scroller, copper bar only as one element, no rainbow palette without art direction.
+Avoid: {{ spec.avoid | join(", ") }}
+Scroller text (if any): {{ spec.text }}
+
+Follow the contract prefix EXACTLY (envelope with one ```json + one ```glsl block; only mainImage body).

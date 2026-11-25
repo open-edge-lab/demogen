@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>demogen · embed 8bit per siti</title>
+  <style>
+    /* Pagina dimostrativa: come Inserire l'animazione 8bit nel TUO sito.
+       Il player renderizza in realtime in WebGL2 sulla GPU del visitatore:
+       dopo il load non consuma banda (niente video, niente stream). */
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+           background: #0b0b12; color: #cfd8ff; font: 14px/1.5 system-ui, sans-serif; }
+    .stage { text-align: center; }
+    .frame { width: 640px; max-width: 90vw; image-rendering: pixelated;
+             border: 4px solid #2a2a44; border-radius: 8px; overflow: hidden;
+             box-shadow: 0 0 40px #4433ff33; background: #000; }
+    demogen-player { display: block; width: 100%; aspect-ratio: 16 / 9; }
+    .hint { opacity: .7; font-size: 12px; margin-top: 10px; }
+    code { background: #1b1b2c; padding: 1px 5px; border-radius: 4px; }
+  </style>
+  <script type="importmap">
+    { "imports": { "@demogen/player": "../../player/dist/demogen-player.esm.js" } }
+  </script>
+</head>
+<body>
+  <div class="stage">
+    <!-- Un solo tag: il custom element carica il payload .demo (2,5 KB gzip) e parte in loop -->
+    <div class="frame">
+      <demogen-player src="./8bit.demo.json" autoplay></demogen-player>
+    </div>
+    <p class="hint">
+      Embed 8bit — payload <code>8bit.demo.json</code> (2,5 KB gzip), rendering realtime WebGL2,
+      nessun video. Per usarlo nel tuo sito copia <code>player/dist/demogen-player.esm.js</code>
+      e il file <code>.demo.json</code>, poi:
+      <code>&lt;demogen-player src="8bit.demo.json" autoplay&gt;&lt;/demogen-player&gt;</code>
+    </p>
+  </div>
+</body>
+</html>

@@ -139,6 +139,7 @@ Nota: la Fase 3 (livello LLM) è quasi indipendente dal player e può essere svi
 ---
 
 ### Fase 5 — Orchestratore v1 (senza oracolo)
+**Stato: ✅ M5 (CI) raggiunta.** Pipeline S0–S9 con macchina a stati + `state.json` resume (`orchestrator/pipeline.py`, `steps.py`, `selection.py`), template prompt Jinja in `llm/prompts/` (system_contract, brief/style, scene modern/retro, revise, fixer, critic_scene), `FakeLLM` per `--fake`, project store + `report.md`, CLI `generate/resume/revise/report`. E2E finto verde: `generate --fake` → `.demo` 8 s che compila nell'harness e passa i gate senza blocker (~23 s). Smoke live con LLM reale resta manuale (`@pytest.mark.live`, `demogen models check`). Nota: architettura "codemode" — l'LLM genera il codice GLSL, il motore nostro lo esegue, un LLM con visione riverifica i frame e itera (S6–S8 + `revise`).
 **Task**
 - `spec/models.py` completo (pydantic v2, §9).
 - `pipeline.py`: macchina a stati S0–S9, `state.json`, resume idempotente; step S0, S1, S2, S4–S9; selezione best con anti-regressione e penalità perf.

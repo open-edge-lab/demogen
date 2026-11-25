@@ -1,0 +1,19 @@
+# Role: orchestrator — global style (style.glsl + post.json)
+
+Demo: {{ title }}
+Art direction: {{ art_direction }}
+Palette hint: {{ palette_hint }}
+Profile: {{ profile }}
+BPM: {{ bpm }}
+
+Write:
+
+1. `style.glsl` — in a ```glsl block:
+   - For modern: `vec3 finalize(vec3 col, vec2 uv)` ending in `toSRGB(...)` after tonemap/vignette/grain (library `post.glsl`).
+   - For retro: `const vec3 PALETTE[16] = vec3[16](...); const int PALETTE_N = 16;` and `finalize()` that calls `retroFinalize(col, uv, gl_FragCoord.xy, PALETTE, PALETTE_N)` under `#ifdef PROFILE_RETRO` (and a modern branch otherwise, for mixed demos).
+   - Optionally small shared constants/helpers used by scenes.
+   - Use ONLY library functions (see contract prefix). No new hash, no textures.
+
+2. `post.json` — in a ```json block: e.g. `{"bloom": {"threshold": 0.8, "intensity": 0.5}}` or `{}` if no bloom.
+
+Reply with the envelope: one ```json block (post), one ```glsl block (style.glsl).

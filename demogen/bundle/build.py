@@ -15,29 +15,39 @@ LIB_DIR = Path(__file__).resolve().parents[1] / "glsl" / "lib"
 PLAYER_DIST = Path(__file__).resolve().parents[2] / "player" / "dist"
 
 
-def build_payload(spec: dict, base_dir: Path, do_minify: bool = True) -> dict:
-    """Costruisce il payload .demo da una spec timeline (JSON) + file shader."""
+def build_payload_from_sources(
+    spec: dict, scenes_src: dict[str, str], style_src: str = "", do_minify: bool = True
+) -> dict:
+    """Payload .demo da sorgenti in memoria (pipeline)."""
     bpm = float(spec["bpm"])
     bpb = int(spec.get("beats_per_bar", 4))
+    scenes_spec = spec["scenes"]
+    lib = load_library(LIB_DIR)
+    entry = "\n".join(scenes_src.values()) + "\n" + style_src
+    common = treeshake(entry, lib) + "\n" + style_src
+    if do_minify:
+        common = minify(common)
+        scenes_src = {k: minify(v) for k, v in scenes_src.items()}
+
+    return _finalize_payload(spec, bpm, bpb, scenes_spec, scenes_src, common)
+
+
+def build_payload(spec: dict, base_dir: Path, do_minify: bool = True) -> dict:
+    """Costruisce il payload .demo da una spec timeline (JSON) + file shader."""
     scenes_spec = spec["scenes"]
     scenes_src: dict[str, str] = {}
     for s in scenes_spec:
         scenes_src[s["id"]] = (base_dir / s["src"]).read_text(encoding="utf-8")
-
-    # common = libreria tree-shaked (dagli entry: tutte le scene + style) + style
     style_path = spec.get("common")
     style_src = ""
     if style_path:
         style_text = (base_dir / style_path).read_text(encoding="utf-8")
         style_src, _ = preprocess(style_text, base_dir=base_dir)
-    lib = load_library(LIB_DIR)
-    entry = "\n".join(scenes_src.values()) + "\n" + style_src
-    common_lib = treeshake(entry, lib)
-    common = common_lib + "\n" + style_src
-    if do_minify:
-        common = minify(common)
-        scenes_src = {k: minify(v) for k, v in scenes_src.items()}
+    return build_payload_from_sources(spec, scenes_src, style_src, do_minify)
 
+
+def _finalize_payload(spec: dict, bpm: float, bpb: int, scenes_spec: list,
+                      scenes_src: dict[str, str], common: str) -> dict:
     last = scenes_spec[-1]
     duration_s = (last["start_bar"] + last["bars"]) * bpb * 60.0 / bpm
     payload = {

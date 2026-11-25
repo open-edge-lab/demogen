@@ -8,3 +8,19 @@ out/
 projects/
 .pytest_cache/
 .ruff_cache/
+
+# --- mai committare file sensibili (repo público su GitHub) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+.ssh/
+secrets/
+*credentials*
+*.secret
+llm_calls/
+*.log

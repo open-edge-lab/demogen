@@ -10,10 +10,8 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - [x] Fase 1 — ✅ M1: player core realtime, libreria GLSL, harness, CLI play/bundle/probe, demo M1, golden, CI (commit 301bd6c)
 - [x] Fase 3 — ✅ M3 (CI): livello LLM completo — config, client, envelope/structured, capabilities, budget, `demogen init` + `models check` (commit 55267e3)
 - [x] Fase 4 — ✅ M4: metriche video/perf/flash + gate numerici + sheets (contact/burst/diff/perf) + `demogen inspect`/`calibrate`; harness con stats float (NaN/Inf) e cellSequence; 10 test sintetici gate + E2E inspect; pytest 31/31
+- [x] Fase 5 — ✅ M5 (CI): orchestratore S0–S9, prompt Jinja, FakeLLM `--fake`, CLI generate/resume/revise/report, E2E finto verde (~23 s)
 - [ ] Fase 2 — audio
-- [ ] Fase 3 — livello LLM
-- [ ] Fase 4 — metriche e gate
-- [ ] Fase 5 — orchestratore (pipeline completa)
 - [ ] Fase 6 — oracolo matematico
 - [ ] Fase 7 — distribuzione/export (posticipata)
 
@@ -30,6 +28,8 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - Probe: `uv run demogen probe examples/timeline.json --gpu swiftshader|hardware` (PNG + ms in `out/`)
 - Inspect: `uv run demogen inspect examples/timeline.json --gpu swiftshader` (metriche+gate+fogli in `out/inspect_*/`)
 - Calibrate: `uv run demogen calibrate --gpu hardware` (ms dei 4 shader examples → `out/calibrate.json`)
+- Generate (pipeline LLM completa): `uv run demogen generate "<prompt>" --project projects/x [--fake] [--duration 30] [--bpm 120] [--gpu hardware|swiftshader]` → `out/*.demo|*.html` + `report.md`; `resume`, `revise <scena> "nota"`, `report`
+- Libreria web: il player è esportato da `player/src/index.ts` — build ESM/IIFE/types con `npm run build --workspace player`; esempi in `examples/web/` (`index.html` demo, `8bit.html` embed 8bit zero-banda); doc `docs/player-web-library.md`
 - Rigenera vettori timeline: `uv run python scripts/gen_vectors.py`
 
 ## Convenzioni
@@ -40,3 +40,4 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - Nessuna chiamata API reale nei test standard (`@pytest.mark.live`); perf su GPU reale solo locale (`@pytest.mark.perf`).
 - Le pagine pilotate da Playwright hanno la rete esterna bloccata (solo 127.0.0.1 servito).
 - Al termine di ogni fase: test verdi, commit `phase N: <sintesi>`, aggiorna le checkbox qui e in `docs/piano-esecuzione.md`.
+- Repo remoto: `origin` = https://github.com/open-edge-lab/demogen.git (pubblico). **Mai committare file sensibili**: `.gitignore` esclude `.env*`, `*.pem/key/p12/pfx`, `id_rsa*`, `secrets/`, `*credentials*`, `llm_calls/`, `*.log`. Prima di ogni push scansiona la history per pattern di chiavi (`sk-…`, `ghp_…`, `AKIA…`, `BEGIN … PRIVATE KEY`).

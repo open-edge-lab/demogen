@@ -1,0 +1,18 @@
+# Role: orchestrator — revise scene {{ scene_id }} (minimal change)
+
+Current shader version {{ version }}:
+
+```glsl
+{{ current_src }}
+```
+
+Critic report: {{ critique_json }}
+
+Gate issues (ordered by severity):
+{{ issues_text }}
+
+Previous version scores: {{ history_text }}
+
+Instruction: modify the MINIMUM needed to fix the issues in severity order. Keep what works. If perf hotspots are listed, reduce cost at those times (bounding volume, qSteps, fewer octaves far away, shadow/AO only above qEnable threshold). Do not rewrite from scratch.
+
+Reply with the envelope: one ```json block (updated metadata) + one ```glsl block (full corrected mainImage body).

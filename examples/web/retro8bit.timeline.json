@@ -1,0 +1,16 @@
+{
+  "name": "demogen-8bit-embed",
+  "bpm": 120,
+  "beats_per_bar": 4,
+  "loop": true,
+  "common": "../common.glsl",
+  "text": "DEMOGEN 8BIT * PIXEL PERFECT * ZERO BANDA * GPU DEL VISITATORE * 0123456789",
+  "render": {
+    "profile": "retro",
+    "retro": { "internal_resolution": [320, 180], "upscale": "nearest" }
+  },
+  "quality": { "target_fps": 60, "min_scale": 0.75 },
+  "scenes": [
+    { "id": "s1", "src": "../shaders/plasma_retro.glsl", "start_bar": 0, "bars": 8, "transition_in": "cut", "transition_bars": 0 }
+  ]
+}

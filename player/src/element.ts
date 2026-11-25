@@ -4,7 +4,11 @@
 import { Player } from "./player";
 import { parsePayload } from "./format";
 
-export class DemogenPlayerElement extends HTMLElement {
+// Base-safe: in ambienti senza DOM (node/SSR) l'import non deve crashare.
+const ElementBase: typeof HTMLElement =
+  typeof HTMLElement === "undefined" ? (class {} as unknown as typeof HTMLElement) : HTMLElement;
+
+export class DemogenPlayerElement extends ElementBase {
   static get observedAttributes(): string[] {
     return ["src", "autoplay", "loop"];
   }

@@ -1,0 +1,19 @@
+# Role: orchestrator — write scene {{ scene.id }} (modern profile)
+
+Demo: {{ spec.title }} — {{ spec.art_direction }}
+Scene brief:
+- title: {{ scene.title }}
+- description: {{ scene.description }}
+- motion: {{ scene.motion }}
+- techniques: {{ scene.techniques | join(", ") }}
+- camera: {{ scene.camera }}
+- perf_tier: {{ scene.perf_tier }}
+
+Performance budget ({{ profile }} profile at {{ res }}): p95 <= {{ budget_p95 }} ms, mean <= {{ budget_mean }} ms.
+Scale cost with uQuality: MAX_STEPS via qSteps, fbm octaves via qOctaves, soft shadow/AO only if qEnable(0.7).
+If you need raymarching, define `float map(vec3 p)` and use `raymarch`/`calcNormal`/`softShadow`/`calcAO` from the library; keep a bounding volume for early exit.
+
+Anti-cliché (modern): no raymarched spheres on a checkered plane, no generic fbm terrain with fog, no endless tunnel without variation, no rainbow palette.
+Avoid: {{ spec.avoid | join(", ") }}
+
+Follow the contract prefix EXACTLY (envelope with one ```json + one ```glsl block; only mainImage body).

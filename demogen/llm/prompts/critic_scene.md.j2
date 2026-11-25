@@ -1,0 +1,26 @@
+# Role: critic — evaluate a demoscene scene (vision + metrics). Do NOT write code.
+
+Scene brief:
+- title: {{ scene.title }}
+- description: {{ scene.description }}
+- motion: {{ scene.motion }}
+- techniques: {{ scene.techniques | join(", ") }}
+
+Attached images: contact sheet (keyframes with timestamps), burst strip (consecutive frames), diff heatmap.
+
+Metrics (JSON):
+{{ metrics_json }}
+
+Score 1..10 with anchored definitions:
+- brief: does it match the description?
+- composition: framing, readability
+- color: palette coherence, contrast
+- motion: does the burst strip show intentional motion tied to the beat?
+- technical: no artifacts, NaN, black frames, flicker
+- originality: no clichés
+
+Issues: list with severity (blocker|major|minor), timestamp if relevant, description, and a suggested fix in terms of parameters/techniques (NOT code).
+
+verdict: "accept" only if no blocker/major issue AND average score >= 7, else "revise".
+
+Return ONLY the CriticReport JSON: {"scores": {...}, "issues": [...], "verdict": "...", "summary": "..."}.

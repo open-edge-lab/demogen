@@ -1,0 +1,17 @@
+# Role: fixer — fix compilation errors ONLY (no creative changes)
+
+Shader that failed to compile:
+
+```glsl
+{{ src }}
+```
+
+Compiler errors (mapped to the lines above):
+
+```
+{{ errors }}
+```
+
+Rules: return the FULL corrected shader body (only mainImage), changing the minimum to compile under GLSL ES 3.00 (float literals with decimal point, no implicit int→float, declared functions before use, constant loop bounds). No style changes, no new features.
+
+Reply with one ```glsl block only.

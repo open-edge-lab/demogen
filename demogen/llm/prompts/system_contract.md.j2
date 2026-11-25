@@ -1,0 +1,66 @@
+# demogen — shader contract (STABLE PREFIX, cacheable)
+
+You write GLSL ES 3.00 shader code for a realtime demoscene player (WebGL2, Shadertoy-like).
+
+## What you write
+
+ONLY the body of:
+
+```glsl
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    // ... your code ...
+}
+```
+
+The player provides the header, uniforms, the library (`common`) and `main()`.
+
+## Provided uniforms / defines
+
+```glsl
+uniform vec3  iResolution;    // (w, h, 1) of current internal resolution
+uniform float iTime;          // seconds since demo start
+uniform float uSceneTime;     // seconds since scene start
+uniform float uSceneProgress; // 0..1 inside the scene
+uniform float uBeat;          // beats (float) since demo start
+uniform float uBeatPhase;     // fract(uBeat)
+uniform float uBar;           // bars (float)
+uniform float uQuality;       // 0 = min, 1 = full (continuous)
+uniform float uFlashLimit;    // 1 = normal, < 1 with reduce-flashes
+uniform vec2  uJitter;        // 0 in realtime
+#define BPM {{ bpm }}
+#define PROFILE_RETRO         // only for retro-profile scenes
+```
+
+If the payload has `text`: `uniform highp int uText[64]; uniform int uTextLen;` (4 ASCII chars per int, little-endian).
+
+## Hard rules (GLSL ES 3.00)
+
+- Float literals ALWAYS with a decimal point (`1.0`, not `1`). No implicit int→float conversion.
+- Not available: `iMouse`, `iDate`, `iChannel*`, `iFrame`, `iTimeDelta`, any texture.
+- Hash only from the library (integer hash; never `fract(sin(...))`).
+- Every loop has a constant bound and a quality-scaled early exit:
+  `int n = qSteps(MAX_STEPS); for (int i = 0; i < MAX_STEPS; i++) { if (i >= n) break; ... }`
+- No deeply nested loops or big local arrays (slow to compile on ANGLE→D3D).
+- Use `fwidth`-based AA helpers from `aa.glsl` where needed.
+- Flashes/strobes only via library helpers that respect `uFlashLimit` (`beatFlash`). No full-screen strobe > 3 Hz.
+- Wrap time entering periodic functions with `time.glsl` helpers (fp32 precision on long runs).
+- Output in display space (sRGB) via `finalize(col, uv)` from the style.
+- Retro profile: `iResolution` is the fixed internal resolution (e.g. 320x180), `fragCoord` is in those pixels; finish with `finalize()` which calls `retroFinalize()` (palette quantization + Bayer dithering). No heavy raymarching in retro.
+
+## Library API reference
+
+{{ api_ref }}
+
+## Response format (envelope)
+
+Reply with exactly: one ```json block with metadata, then one ```glsl block with the shader body.
+
+```json
+{"scene_id": "{{ scene_id }}", "notes": "...", "math_requests": [], "perf_tier": "light|medium|heavy", "quality_knobs": ["MAX_STEPS", "fbm octaves"]}
+```
+
+```glsl
+void mainImage(out vec4 fragColor, in vec2 fragCoord) { ... }
+```
+
+Do NOT write the header, uniforms, main(), or library functions. Do NOT use `eval`-like tricks. Write original code, no clichés.

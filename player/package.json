@@ -1,11 +1,26 @@
 {
   "name": "@demogen/player",
   "version": "0.1.0",
-  "private": true,
+  "description": "Motore di rendering WebGL2 per demoscene demogen: usabile come libreria in pagine web (ESM/IIFE) o custom element <demogen-player>.",
   "type": "module",
+  "main": "dist/demogen-player.min.js",
+  "module": "dist/demogen-player.esm.js",
+  "types": "dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/demogen-player.esm.js",
+      "default": "./dist/demogen-player.min.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "npm run build:core && npm run build:harness",
+    "build": "npm run build:core && npm run build:lib && npm run build:types && npm run build:harness",
     "build:core": "esbuild src/index.ts --bundle --format=iife --global-name=demogenPlayer --minify --outfile=dist/demogen-player.min.js",
+    "build:lib": "esbuild src/index.ts --bundle --format=esm --outfile=dist/demogen-player.esm.js",
+    "build:types": "tsc -p tsconfig.build.json",
     "build:harness": "esbuild src/harness.ts --bundle --format=iife --global-name=demogenHarness --outfile=dist/demogen-harness.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

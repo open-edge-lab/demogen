@@ -455,5 +455,80 @@ def calibrate(
     print(f"salvato {out}/calibrate.json")
 
 
+@app.command()
+def generate(
+    prompt: str = typer.Argument(..., help="Prompt testuale della demo"),
+    duration: float = typer.Option(30.0, help="Durata in secondi"),
+    bpm: float = typer.Option(128.0),
+    profile: str = typer.Option("modern", help="modern | retro"),
+    loop: bool = typer.Option(False),
+    project: Path | None = typer.Option(None, help="Cartella progetto (default: projects/<data>_<slug>)"),
+    fake: bool = typer.Option(False, help="LLM finto deterministico (smoke senza API reali)"),
+    gpu: str = typer.Option("swiftshader", help="hardware | swiftshader"),
+) -> None:
+    """Pipeline completa: prompt → spec → style → shader per scena → compile → probe → critica → bundle."""
+    from .config import Config, load_config
+    from .llm.fake import fake_client_factory
+    from .orchestrator.pipeline import Pipeline
+    from .project.store import Project, new_project_dir
+
+    if fake:
+        cfg = Config.model_validate({"providers": {}, "roles": {}})
+        factory = fake_client_factory
+    else:
+        cfg = load_config(None)
+        factory = None
+    proj = Project(project or new_project_dir(prompt))
+    pipe = Pipeline(proj, cfg, gpu=gpu, client_factory=factory)
+    spec = pipe.run(prompt, duration_s=duration, bpm=bpm, profile=profile, loop=loop)
+    print(f"progetto: {proj.path}")
+    print(f"spec: {spec.title} — {len(spec.scenes)} scene, {spec.duration_s:.1f}s, bpm {spec.timeline.bpm}")
+    print(f"report: {proj.path / 'report.md'}")
+
+
+@app.command()
+def resume(
+    project: Path = typer.Argument(..., exists=True, help="Cartella del progetto"),
+    gpu: str = typer.Option("swiftshader"),
+) -> None:
+    """Riprende un progetto dallo step indicato in state.json."""
+    from .config import load_config
+    from .orchestrator.pipeline import Pipeline
+    from .project.store import Project
+    from .spec.models import DemoSpec
+
+    proj = Project(project)
+    cfg = load_config(None)
+    spec = DemoSpec.model_validate_json(proj.read("spec.json"))
+    pipe = Pipeline(proj, cfg, gpu=gpu)
+    pipe.run(spec.prompt, duration_s=spec.duration_s, bpm=spec.timeline.bpm,
+             profile=spec.profile, loop=spec.loop)
+
+
+@app.command()
+def revise(
+    project: Path = typer.Argument(..., exists=True),
+    scene: str = typer.Option(..., help="id scena (s1, s2, ...)"),
+    note: str = typer.Option(..., help="Nota di revisione (es. 'meno nebbia, più contrasto sul kick')"),
+    gpu: str = typer.Option("swiftshader"),
+) -> None:
+    """Revisione mirata di una scena con nota testuale, poi nuovo bundle."""
+    from .config import load_config
+    from .orchestrator.pipeline import Pipeline
+    from .project.store import Project
+
+    proj = Project(project)
+    pipe = Pipeline(proj, load_config(None), gpu=gpu)
+    pipe.run_revise(scene, note)
+
+
+@app.command()
+def report(project: Path = typer.Argument(..., exists=True)) -> None:
+    """Stampa il report.md del progetto."""
+    from .project.report import build_report
+
+    print(build_report(project))
+
+
 if __name__ == "__main__":
     app()

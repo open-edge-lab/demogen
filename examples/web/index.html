@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>demogen player — esempio web</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+    demogen-player { display: block; width: 100vw; height: 100vh; }
+    #hud {
+      position: fixed; left: 8px; top: 8px; color: #9fe8ff; z-index: 10;
+      font: 12px/1.4 monospace; text-shadow: 0 0 4px #000; pointer-events: none;
+    }
+  </style>
+  <!-- La libreria ESM del player, servita dal repo (build: npm run build --workspace player) -->
+  <script type="importmap">
+    { "imports": { "@demogen/player": "../../player/dist/demogen-player.esm.js" } }
+  </script>
+</head>
+<body>
+  <div id="hud">demogen · demo M1 · renderer: <span id="renderer">?</span></div>
+
+  <!-- Uso 1: custom element con payload .demo via fetch -->
+  <demogen-player src="./demo.demo.json" autoplay></demogen-player>
+
+  <!--
+    Uso 2: payload inline, nessuna fetch
+    <demogen-player autoplay>
+      <script type="application/json">{ "format": "demogen/1", ... }</script>
+    </demogen-player>
+
+    Uso 3: API programmatica
+    <script type="module">
+      import { Player, rendererInfo, parsePayload } from "@demogen/player";
+      const canvas = document.querySelector("canvas") ?? document.body.appendChild(Object.assign(document.createElement("canvas"), { style: "width:100vw;height:100vh" }));
+      const res = await fetch("./demo.demo.json");
+      const player = new Player(canvas, parsePayload(await res.json()), { autoPlay: true });
+      await player.load();
+      console.log(rendererInfo(player.gl ?? null)); // info GPU (utile per debug: swiftshader = CPU)
+      // player.play(); player.pause(); player.seek(12); player.setQuality("low"); player.dispose();
+    </script>
+  -->
+
+  <script type="module">
+    import { rendererInfo } from "@demogen/player";
+    // mostra il renderer dopo il primo frame
+    const el = document.querySelector("demogen-player");
+    const show = () => {
+      const gl = el?.player?.gl;
+      if (gl) document.getElementById("renderer").textContent = rendererInfo(gl).renderer;
+      else requestAnimationFrame(show);
+    };
+    show();
+  </script>
+</body>
+</html>

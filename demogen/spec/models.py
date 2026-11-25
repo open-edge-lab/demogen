@@ -1,4 +1,4 @@
-"""Modelli pydantic minimi (Fase 1): timeline e payload .demo."""
+"""Modelli pydantic completi (piano v2 §9)."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 RenderProfile = Literal["modern", "retro"]
+PerfTier = Literal["light", "medium", "heavy"]
 Transition = Literal["cut", "crossfade", "flash", "fade_black"]
 
 
@@ -22,6 +23,53 @@ class Timeline(BaseModel):
     bpm: float = Field(gt=0)
     beats_per_bar: int = 4
     scenes: list[SceneSlot]
+
+
+class SceneBrief(BaseModel):
+    id: str
+    title: str
+    description: str  # cosa si vede
+    motion: str  # come si muove, legame col beat
+    techniques: list[str] = Field(default_factory=list)
+    camera: str = ""
+    profile: RenderProfile | None = None  # override del profilo della demo
+    perf_tier: PerfTier = "medium"
+
+
+class DemoSpec(BaseModel):
+    title: str
+    prompt: str
+    duration_s: float
+    loop: bool = False
+    profile: RenderProfile = "modern"
+    timeline: Timeline
+    scenes: list[SceneBrief]
+    art_direction: str = ""
+    palette_hint: list[str] = Field(default_factory=list)
+    audio_brief: str = ""
+    text: str | None = None  # scroller retro, max 256 caratteri ASCII
+    avoid: list[str] = Field(default_factory=list)
+
+
+class MathRequest(BaseModel):
+    id: str
+    kind: Literal[
+        "sdf", "lipschitz", "intersection", "periodic_path", "easing",
+        "parametric_curve", "attractor_params", "fourier", "other",
+    ]
+    description: str
+    inputs: dict[str, str] = Field(default_factory=dict)
+    output_signature: str = ""
+
+
+class ShaderSubmission(BaseModel):
+    """Metadati dell'envelope; il GLSL viaggia a parte nei blocchi ```glsl."""
+
+    scene_id: str
+    notes: str = ""
+    math_requests: list[MathRequest] = Field(default_factory=list)
+    perf_tier: PerfTier = "medium"
+    quality_knobs: list[str] = Field(default_factory=list)
 
 
 class DemoMeta(BaseModel):

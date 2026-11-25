@@ -26,9 +26,11 @@ def critique(
     images: list[Path],
     metrics_json: str,
     log_dir: Path | None = None,
+    client: LLMClient | None = None,
 ) -> CriticReport:
     """Invia prompt + fogli + metriche al critic e parsea il CriticReport."""
-    client = LLMClient(cfg, role, log_dir=log_dir)
+    if client is None:
+        client = LLMClient(cfg, role, log_dir=log_dir)
     caps = detect_capabilities(cfg, role)
     if not caps.vision:
         raise RuntimeError(f"il ruolo {role} non ha vision: critica degradada solo sulle metriche non disponibile qui")
