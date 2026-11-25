@@ -35,9 +35,13 @@ class Harness:
 
     def __enter__(self) -> Harness:
         self.sess.__enter__()
-        self.sess.goto("harness.html")
-        assert self.sess.page is not None
-        self.sess.page.wait_for_function("window.__demogen !== undefined", timeout=15000)
+        try:
+            self.sess.goto("harness.html")
+            assert self.sess.page is not None
+            self.sess.page.wait_for_function("window.__demogen !== undefined", timeout=15000)
+        except BaseException:
+            self.sess.__exit__(None, None, None)
+            raise
         return self
 
     def __exit__(self, *exc: object) -> None:

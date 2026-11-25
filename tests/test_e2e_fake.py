@@ -7,10 +7,7 @@ import io
 import json
 from pathlib import Path
 
-import pytest
-
-pytest.importorskip("playwright")
-np = pytest.importorskip("numpy")
+import numpy as np
 from PIL import Image
 
 from demogen.browser.harness import Harness
@@ -21,9 +18,12 @@ from demogen.critic.metrics_video import video_metrics
 from demogen.llm.fake import fake_client_factory
 from demogen.orchestrator.pipeline import Pipeline
 from demogen.project.store import Project
+from tests.conftest import require_browser
 
 
 def test_generate_fake_e2e(tmp_path: Path) -> None:
+    # la pipeline apre il browser da sé: il pre-check è l'unico punto che può diventare skip
+    require_browser()
     cfg = Config.model_validate({"providers": {}, "roles": {}})
     proj = Project(tmp_path / "proj")
     pipe = Pipeline(proj, cfg, gpu="swiftshader", client_factory=fake_client_factory)
@@ -38,17 +38,14 @@ def test_generate_fake_e2e(tmp_path: Path) -> None:
     assert (proj.path / "scenes" / "s1" / "best.json").exists()
 
     payload = json.loads(demos[0].read_text(encoding="utf-8"))
-    try:
-        with Harness(gpu="swiftshader") as h:
-            res = h.load(payload)
-            assert res["ok"], "\n".join(res["errors"])[:2000]
-            dur = payload["meta"]["duration_s"]
-            times = [round(dur * (i + 0.5) / 4, 3) for i in range(4)]
-            pngs = h.capture(times, 320, 180)
-            stats = h.scene_stats(times, 320, 180)
-            prof = h.profile(times, 320, 180, repeats=2)
-    except Exception as e:  # noqa: BLE001
-        pytest.skip(f"browser non disponibile: {e}")
+    with Harness(gpu="swiftshader") as h:
+        res = h.load(payload)
+        assert res["ok"], "\n".join(res["errors"])[:2000]
+        dur = payload["meta"]["duration_s"]
+        times = [round(dur * (i + 0.5) / 4, 3) for i in range(4)]
+        pngs = h.capture(times, 320, 180)
+        stats = h.scene_stats(times, 320, 180)
+        prof = h.profile(times, 320, 180, repeats=2)
 
     frames = [np.asarray(Image.open(io.BytesIO(p)).convert("RGB")) for p in pngs]
     vm = video_metrics(frames, stats)

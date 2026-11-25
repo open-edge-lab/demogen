@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from playwright.sync_api import Browser, Page, Playwright, sync_playwright
 
@@ -24,14 +25,38 @@ SWIFTSHADER_FLAGS = [
 HARDWARE_FLAGS: list[str] = []
 
 
+def is_local_url(url: str, port: int) -> bool:
+    """True solo per http://127.0.0.1:<port>/… (niente userinfo, porta esatta).
+
+    Un semplice startswith(base_url) farebbe passare :50001 con base :5000, o
+    http://127.0.0.1:5000@evil.example/.
+    """
+    try:
+        u = urlsplit(url)
+        return (
+            u.scheme == "http"
+            and u.hostname == "127.0.0.1"
+            and u.port == port
+            and u.username is None
+            and u.password is None
+        )
+    except ValueError:
+        return False
+
+
 class BrowserSession:
     """Sessione Playwright: server locale su 127.0.0.1, rete esterna bloccata via page.route."""
 
     def __init__(
-        self, gpu: GPUMode = "auto", headless: bool = True, channel: str | None = None
+        self,
+        gpu: GPUMode = "auto",
+        headless: bool = True,
+        channel: str | None = None,
+        timeout_ms: float = 30_000,
     ) -> None:
         self.gpu = gpu
         self.headless = headless
+        self.timeout_ms = timeout_ms
         # channel="chromium" fuerza il full Chromium (anche in headless) invece della
         # headless shell: solo così in headless si può usare la GPU reale.
         self.channel = channel
@@ -42,35 +67,60 @@ class BrowserSession:
         self.base_url = ""
 
     def __enter__(self) -> BrowserSession:
+        try:
+            self._start()
+        except BaseException:
+            # __exit__ non viene chiamato se __enter__ solleva: chiudi qui ciò che è partito
+            self.__exit__(None, None, None)
+            raise
+        return self
+
+    def _start(self) -> None:
         flags = SWIFTSHADER_FLAGS if self.gpu == "swiftshader" else HARDWARE_FLAGS
+        self._server, port = start_local_server(PLAYER_DIR)
+        self.base_url = f"http://127.0.0.1:{port}"
         self._playwright = sync_playwright().start()
         self.browser = self._playwright.chromium.launch(
             headless=self.headless, args=flags, channel=self.channel
         )
         self.page = self.browser.new_page()
+        self.page.set_default_timeout(self.timeout_ms)
+        self.page.set_default_navigation_timeout(self.timeout_ms)
         self.page.on(
             "console", lambda msg: print(f"[console:{msg.type}] {msg.text}")
         )
         self.page.on("pageerror", lambda err: print(f"[pageerror] {err}"))
-        self._server, port = start_local_server(PLAYER_DIR)
-        self.base_url = f"http://127.0.0.1:{port}"
 
         def _block_external(route, request) -> None:
-            if request.url.startswith(self.base_url):
+            if is_local_url(request.url, port):
                 route.continue_()
             else:
                 route.abort()
 
         self.page.route("**/*", _block_external)
-        return self
 
     def __exit__(self, *exc: object) -> None:
+        # ogni risorsa chiusa a sé: un errore su una non deve lasciare aperte le altre
         if self.browser is not None:
-            self.browser.close()
+            try:
+                self.browser.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self.browser = None
+            self.page = None
         if self._playwright is not None:
-            self._playwright.stop()
+            try:
+                self._playwright.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self._playwright = None
         if self._server is not None:
-            self._server.shutdown()
+            try:
+                self._server.shutdown()
+                self._server.server_close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._server = None
 
     def goto(self, path: str) -> None:
         assert self.page is not None

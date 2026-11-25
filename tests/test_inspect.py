@@ -2,18 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
-
-pytest.importorskip("playwright")
-
 import io
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-from demogen.browser.harness import Harness  # noqa: E402
 from demogen.cli import _payload_from_file  # noqa: E402
 from demogen.config import Config  # noqa: E402
 from demogen.critic.flash import analyze_flash  # noqa: E402
@@ -25,20 +19,16 @@ ROOT = Path(__file__).resolve().parents[1]
 CFG = Config.model_validate({"providers": {}, "roles": {}})
 
 
-def test_inspect_demo_m1_swiftshader() -> None:
+def test_inspect_demo_m1_swiftshader(harness) -> None:
     payload = _payload_from_file(ROOT / "examples" / "timeline.json", 120.0)
-    try:
-        with Harness(gpu="swiftshader") as h:
-            res = h.load(payload)
-            assert res["ok"], "\n".join(res["errors"])[:2000]
-            duration = payload["meta"]["duration_s"]
-            times = [round(duration * (i + 0.5) / 4, 3) for i in range(4)]
-            pngs = h.capture(times, 320, 180)
-            stats = h.scene_stats(times, 320, 180)
-            prof = h.profile(times, 320, 180, repeats=2)
-            cells = h.cell_sequence(0.0, 2.0, 10, 160, 90)
-    except Exception as e:  # noqa: BLE001
-        pytest.skip(f"browser non disponibile: {e}")
+    res = harness.load(payload)
+    assert res["ok"], "\n".join(res["errors"])[:2000]
+    duration = payload["meta"]["duration_s"]
+    times = [round(duration * (i + 0.5) / 4, 3) for i in range(4)]
+    pngs = harness.capture(times, 320, 180)
+    stats = harness.scene_stats(times, 320, 180)
+    prof = harness.profile(times, 320, 180, repeats=2)
+    cells = harness.cell_sequence(0.0, 2.0, 10, 160, 90)
 
     frames = [np.asarray(Image.open(io.BytesIO(p)).convert("RGB")) for p in pngs]
     vm = video_metrics(frames, stats)

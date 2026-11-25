@@ -108,6 +108,17 @@ def _payload_from_file(path: Path, bpm: float) -> dict:
     }
 
 
+def open_player(sess: BrowserSession, payload: dict) -> dict:
+    """Apre player/index.html sul payload e attende che il player sia pronto (info renderer)."""
+    tmp = PLAYER_DIR / ".tmp-demo.json"
+    tmp.write_text(json.dumps(payload), encoding="utf-8")
+    try:
+        sess.goto("index.html?demo=.tmp-demo.json")
+        return sess.harness_info()
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 @app.command()
 def play(
     file: Path = typer.Argument(
@@ -119,11 +130,8 @@ def play(
 ) -> None:
     """Rendering realtime in una finestra del browser (server locale 127.0.0.1)."""
     payload = _payload_from_file(file, bpm)
-    tmp = PLAYER_DIR / ".tmp-demo.json"
-    tmp.write_text(json.dumps(payload), encoding="utf-8")
     with BrowserSession(gpu=gpu, headless=headless) as sess:  # type: ignore[arg-type]
-        sess.goto("index.html?demo=.tmp-demo.json")
-        info = sess.harness_info()
+        info = open_player(sess, payload)
         print(f"renderer: {info['renderer']}  (gpu={gpu}, headless={headless})")
         print("Rendering realtime in corso — chiudi la finestra del browser per terminare.")
         sess.page.wait_for_event("close", timeout=0)

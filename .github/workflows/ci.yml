@@ -3,6 +3,7 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -14,7 +15,7 @@ jobs:
       - run: npm run typecheck --workspace player
       - run: npm test --workspace player
       - run: uv sync
-      - run: uv run playwright install chromium
+      - run: uv run playwright install --with-deps chromium
       - run: uv run ruff check .
       - run: uv run pytest -q
       - name: size gate player core (≤ 12 KB gzip)

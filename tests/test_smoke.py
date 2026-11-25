@@ -4,12 +4,6 @@ from __future__ import annotations
 
 import io
 
-import pytest
-
-pytest.importorskip("playwright")
-
-from demogen.browser.harness import Harness  # noqa: E402
-
 PAYLOAD = {
     "format": "demogen/1",
     "meta": {"title": "smoke", "duration_s": 4, "loop": True, "bpm": 120, "beats_per_bar": 4},
@@ -35,18 +29,14 @@ PAYLOAD = {
 }
 
 
-def test_harness_swiftshader_load_capture_profile() -> None:
-    try:
-        with Harness(gpu="swiftshader") as h:
-            res = h.load(PAYLOAD)
-            assert res["ok"], res["errors"]
-            info = h.info()
-            assert info["webgl2"]
-            assert "swiftshader" in info["renderer"].lower()
-            pngs = h.capture([1.0], 320, 180)
-            prof = h.profile([0.0, 1.0], 320, 180, repeats=2)
-    except Exception as e:  # noqa: BLE001
-        pytest.skip(f"browser Playwright non disponibile: {e}")
+def test_harness_swiftshader_load_capture_profile(harness) -> None:
+    res = harness.load(PAYLOAD)
+    assert res["ok"], res["errors"]
+    info = harness.info()
+    assert info["webgl2"]
+    assert "swiftshader" in info["renderer"].lower()
+    pngs = harness.capture([1.0], 320, 180)
+    prof = harness.profile([0.0, 1.0], 320, 180, repeats=2)
 
     from PIL import Image
 

@@ -76,14 +76,13 @@ def test_verify_sdf_errore_segno_rifiutato() -> None:
     assert not r.ok
 
 
-def test_verify_sdf_toro_3d_via_len3_accettato() -> None:
-    # toro in 3D appiattito su z: |grad| = 1
+@pytest.mark.xfail(strict=True, reason="review #32 (batch G): verify lega solo x,y,t; SDF 3D non verificabili")
+def test_verify_sdf_toro_3d_accettato() -> None:
+    # toro 3D (raggio maggiore 2, minore 0.5): SDF esatta, |grad| = 1
     expr = "len2(len2(x, y) - 2.0, z) - 0.5"
-    r = verify_claim(req("sdf", expr, {"domain": [[-3, 3], [-3, 3]], "samples": 48},
-                         inputs={"x": "f", "y": "f", "z": "f"}))
-    # z non è nel dominio 2D: aggiungo z=0 fissando il dominio? verify usa x,y; z mancante -> errore
-    # ci aspettiamo che fallisca in modo pulito (non crash)
-    assert isinstance(r.ok, bool)
+    r = verify_claim(req("sdf", expr, {"domain": [[-3, 3], [-3, 3], [-1, 1]], "samples": 48},
+                         inputs={"x": "float", "y": "float", "z": "float"}))
+    assert r.ok, r.detail
 
 
 def test_verify_lipschitz_seno_accetta_bound_1_rifiuta_05() -> None:
