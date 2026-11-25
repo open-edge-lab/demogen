@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 RenderProfile = Literal["modern", "retro"]
 PerfTier = Literal["light", "medium", "heavy"]
@@ -13,6 +13,13 @@ Transition = Literal["cut", "crossfade", "flash", "fade_black"]
 # gli id delle scene diventano path (scenes/<id>/...): niente separatori, `..` o `:`
 SCENE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,32}$"
 SceneId = Annotated[str, Field(pattern=SCENE_ID_PATTERN)]
+MAX_TEXT_BYTES = 256  # uText[64] × 4 byte: il player legge byte UTF-8, non caratteri
+
+
+def _check_text(v: str | None) -> str | None:
+    if v is not None and len(v.encode("utf-8")) > MAX_TEXT_BYTES:
+        raise ValueError(f"text: massimo {MAX_TEXT_BYTES} byte UTF-8 (ne ha {len(v.encode('utf-8'))})")
+    return v
 
 
 class SceneSlot(BaseModel):
@@ -53,6 +60,11 @@ class DemoSpec(BaseModel):
     audio_brief: str = ""
     text: str | None = None  # scroller retro, max 256 caratteri ASCII
     avoid: list[str] = Field(default_factory=list)
+
+    @field_validator("text")
+    @classmethod
+    def _text_bytes(cls, v: str | None) -> str | None:
+        return _check_text(v)
 
     @model_validator(mode="after")
     def _check_slots(self) -> DemoSpec:
@@ -130,3 +142,8 @@ class DemoPayloadSpec(BaseModel):
     post: dict = Field(default_factory=dict)
     quality: dict = Field(default_factory=lambda: {"min_scale": 0.5, "target_fps": 60})
     audio: str = ""  # Fase 2: sorgente GLSL con mainAudio(out vec4, in float t)
+
+    @field_validator("text")
+    @classmethod
+    def _text_bytes(cls, v: str | None) -> str | None:
+        return _check_text(v)

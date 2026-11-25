@@ -1,6 +1,7 @@
 // Harness (SOLO build di test/pipeline, mai distribuito): espone window.__demogen
 // con load/capture/lumaSequence/profile/info. Render fuori da rAF, a tempi esatti.
 
+import { AudioEngine } from "./audio";
 import { Player } from "./player";
 import { parsePayload } from "./format";
 import { createGL, rendererInfo, DemogenInfo } from "./gl";
@@ -25,10 +26,14 @@ function ensureCanvas(): HTMLCanvasElement {
 
 async function load(payload: unknown): Promise<{ ok: boolean; errors: string[]; compile_ms: number }> {
   const errors: string[] = [];
+  // un solo player alla volta: il precedente libera programmi, FBO, listener e audio
+  current?.player.dispose();
+  current = null;
   try {
     const p = parsePayload(payload);
     const canvas = ensureCanvas();
-    const player = new Player(canvas, p, { preserveDrawingBuffer: true, autoPlay: false });
+    // autoResize false: la dimensione la decide setSize (capture/profile a w×h esatti)
+    const player = new Player(canvas, p, { preserveDrawingBuffer: true, autoPlay: false, autoResize: false });
     const t0 = performance.now();
     await player.load();
     current = { player, canvas };
@@ -200,9 +205,10 @@ function profile(opts: {
 }
 
 function info(): DemogenInfo {
-  const canvas = ensureCanvas();
-  const gl = canvas.getContext("webgl2") ?? createGL(canvas);
-  return rendererInfo(gl);
+  if (current) return current.player.info;
+  // primo contesto del canvas: con preserveDrawingBuffer, come lo vorrà il Player (gli
+  // attributi valgono solo alla prima getContext)
+  return rendererInfo(createGL(ensureCanvas(), true));
 }
 
 function state(tl: unknown, t: number): unknown {
@@ -211,15 +217,20 @@ function state(tl: unknown, t: number): unknown {
 
 /** Fase 2: renderizza `blocks` blocchi audio a partire dal tempo t0 (secondi).
  *  Ritorna array di Float32Array stereo (interleaved L,R). */
-function renderAudio(opts: { t0: number; blocks: number }): number[][] {
+function renderAudio(opts: { t0: number; blocks: number; pack8?: boolean }): number[][] {
   if (!current) throw new Error("load() prima");
-  const a = current.player.audio;
+  const { player } = current;
+  let a = player.audio;
   if (!a) throw new Error("payload senza audio");
-  const chunkDur = (256 * 64) / 44100; // AUDIO_BLOCK_SAMPLES / sampleRate (fallback 44100)
-  const first = Math.floor(opts.t0 / (a.chunkDur || chunkDur));
+  // pack8: engine temporaneo col fallback RGBA8 forzato (test del percorso senza float FBO)
+  const tmp = opts.pack8 ? new AudioEngine(player.gl, player.audioFragment, player.bpm, { forcePack8: true }) : null;
+  if (tmp) a = tmp;
+  const first = Math.floor(opts.t0 / a.chunkDur);
   const out: number[][] = [];
-  for (let i = 0; i < opts.blocks; i++) {
-    out.push(Array.from(a.renderBlock(first + i)));
+  try {
+    for (let i = 0; i < opts.blocks; i++) out.push(Array.from(a.renderBlock(first + i)));
+  } finally {
+    tmp?.dispose();
   }
   return out;
 }

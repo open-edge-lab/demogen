@@ -12,7 +12,7 @@ CI, docs). Contiene lo stato, i problemi ancora aperti e i batch di correzione d
 | C | Sicurezza (bundle HTML, path, sandbox dell'oracolo) | ✅ fatto: escape di titolo e payload, slug per i file, path e id confinati, runner `-I -c`, clamp dei claim |
 | D | Correttezza della pipeline LLM | ✅ fatto: budget persistito e applicato, output strutturato con fallback, resume per scena/artefatto, versioni max+1, `#line` per il fixer, flag di S0, blocker che bloccano |
 | E | Gate del critic (flash, perf, flicker) | ✅ fatto: flash WCAG e perf in `60ff24c`; burst consecutivi + score di oscillazione, loop seam, floor, perf alla risoluzione del budget, audio L+R con onset forti |
-| F | Player TS | da fare |
+| F | Player TS | ✅ fatto: LINK_STATUS, clock con pausa/loop, resize, `play`, scheduling audio, pack8, dispose/restore, transizioni, pacing, formato (core 11,5 KB gzip su 12) |
 | G | Oracolo matematico | da fare |
 | H | Docs | da fare |
 

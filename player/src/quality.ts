@@ -1,6 +1,6 @@
 // Controllore di qualità adattivo + frame pacing.
 // Scala la risoluzione interna (scale) e uQuality per restare dentro il budget
-// 1000/target_fps; isteresi in risalita; ningún cambio nel primo secondo.
+// 1000/target_fps; isteresi in risalita; nessun cambio nel primo secondo.
 
 export interface QualityLimits {
   targetFps: number;
@@ -16,57 +16,65 @@ export interface QualityState {
   bloom: boolean;
 }
 
-const SCALES = [1.0, 0.85, 0.7];
+const BASE_SCALES = [1.0, 0.85, 0.7, 0.5];
 const QUALITIES = [1.0, 0.5, 0.0];
 
 export class QualityController {
   scaleIdx = 0;
   qIdx = 0;
   bloom: boolean;
+  /** Scala della risoluzione interna, dalla piena fino a minScale (incluso). */
+  readonly scales: number[];
   private emaMs = 0;
   private frames = 0;
-  private lastChangeMs = 0;
-  private nowMs = 0;
+  private lastChangeMs: number | null = null;
+  private next = -1; // istante (ms) dal quale il prossimo frame può partire
 
   constructor(
     private limits: QualityLimits = DEFAULT_LIMITS,
     initialScale = 1.0,
   ) {
     this.bloom = limits.bloom;
-    // Bristol: scala iniziale richiesta (es. eco) limita l'indice massimo
-    while (this.scaleIdx < SCALES.length - 1 && SCALES[this.scaleIdx] > initialScale) this.scaleIdx++;
+    const min = Math.min(1, Math.max(0.1, limits.minScale));
+    this.scales = BASE_SCALES.filter((s) => s > min + 1e-6).concat([min]);
+    // scala iniziale richiesta (es. eco) limita l'indice di partenza
+    while (this.scaleIdx < this.scales.length - 1 && this.scales[this.scaleIdx] > initialScale) this.scaleIdx++;
   }
 
   get state(): QualityState {
-    const minScale = this.limits.minScale;
-    const scale = Math.max(minScale, SCALES[Math.min(this.scaleIdx, SCALES.length - 1)]);
     return {
-      scale,
-      uQuality: QUALITIES[Math.min(this.qIdx, QUALITIES.length - 1)],
+      scale: this.scales[this.scaleIdx],
+      uQuality: QUALITIES[this.qIdx],
       bloom: this.bloom && this.limits.bloom,
     };
   }
 
-  /** true se questo frame va renderizzato (frame pacing a target_fps). */
+  /** true se questo frame va renderizzato (frame pacing a target_fps, qualsiasi refresh del display).
+   *  Accumulatore: a 75/90/144 Hz si resta a ~target_fps invece di scendere a metà refresh. */
   shouldRender(nowMs: number): boolean {
     const budget = 1000 / this.limits.targetFps;
-    if (nowMs - this.nowMs < budget - 1) return false;
-    this.nowMs = nowMs;
+    if (this.next < 0) {
+      this.next = nowMs + budget;
+      return true;
+    }
+    if (nowMs < this.next - 2) return false; // 2 ms di tolleranza al jitter di rAF
+    this.next += budget;
+    if (nowMs - this.next > budget) this.next = nowMs + budget; // dopo uno stallo: riallinea
     return true;
   }
 
-  /** Aggiorna con il tempo dell'ultimo frame renderizzato (ms). */
+  /** Aggiorna con la durata dell'ultimo frame renderizzato (ms) — intervallo tra frame, non solo CPU. */
   update(frameMs: number, nowMs: number): void {
     const a = 0.1;
     this.emaMs = this.emaMs === 0 ? frameMs : this.emaMs * (1 - a) + frameMs * a;
     this.frames++;
-    if (nowMs - this.lastChangeMs < 1000) return; // niente cambi nel primo secondo
+    if (this.lastChangeMs === null) this.lastChangeMs = nowMs; // il "primo secondo" parte qui
+    if (nowMs - this.lastChangeMs < 1000) return;
     if (this.frames < 30) return;
     const budget = 1000 / this.limits.targetFps;
     if (this.emaMs > budget * 1.15) {
-      // scendi: prima la scala, poi uQuality, poi bloom
-      if (this.scaleIdx < SCALES.length - 1) this.scaleIdx++;
-      else if (SCALES[this.scaleIdx] > this.limits.minScale) this.scaleIdx = SCALES.length - 1;
+      // scendi: prima la scala (fino a minScale), poi uQuality, poi bloom
+      if (this.scaleIdx < this.scales.length - 1) this.scaleIdx++;
       else if (this.qIdx < QUALITIES.length - 1) this.qIdx++;
       else if (this.bloom) this.bloom = false;
       this.frames = 0;

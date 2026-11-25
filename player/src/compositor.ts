@@ -27,6 +27,7 @@ precision highp float;
 uniform sampler2D uTexA;
 uniform sampler2D uTexB;
 uniform float uAlpha;
+uniform float uFlashLimit; // limite fotosensibilità del player (1 = pieno)
 uniform int uMode; // 0=crossfade 1=flash 2=fade_black
 in vec2 vUv;
 out vec4 o;
@@ -37,7 +38,7 @@ void main() {
     o = mix(a, b, uAlpha);
   } else if (uMode == 1) {
     float w = sin(3.14159265 * uAlpha); // picco bianco a metà transizione
-    o = mix(a, b, uAlpha) + vec4(vec3(w), 1.0) * 0.7;
+    o = mix(a, b, uAlpha) + vec4(vec3(w * 0.7 * uFlashLimit), 0.0);
   } else {
     float w = 1.0 - sin(3.14159265 * uAlpha); // va a nero a metà
     o = mix(a, b, uAlpha) * w;
@@ -70,7 +71,14 @@ function makeProg(gl: WebGL2RenderingContext, vert: string, frag: string): WebGL
   gl.attachShader(p, vs);
   gl.attachShader(p, fs);
   gl.linkProgram(p);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)!);
+  const ok = gl.getProgramParameter(p, gl.LINK_STATUS);
+  const log = ok ? "" : gl.getProgramInfoLog(p);
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
+  if (!ok) {
+    gl.deleteProgram(p);
+    throw new Error(log ?? "link fallito");
+  }
   return p;
 }
 
@@ -82,6 +90,7 @@ export class Compositor {
   private blitProg: WebGLProgram;
   private locBlend: Record<string, WebGLUniformLocation | null>;
   private locBlit: Record<string, WebGLUniformLocation | null>;
+  private vbo: WebGLBuffer | null;
 
   constructor(private gl: WebGL2RenderingContext, w: number, h: number) {
     this.fboA = createFBO(gl, w, h);
@@ -93,10 +102,11 @@ export class Compositor {
       uTexA: gl.getUniformLocation(this.blendProg, "uTexA"),
       uTexB: gl.getUniformLocation(this.blendProg, "uTexB"),
       uAlpha: gl.getUniformLocation(this.blendProg, "uAlpha"),
+      uFlashLimit: gl.getUniformLocation(this.blendProg, "uFlashLimit"),
       uMode: gl.getUniformLocation(this.blendProg, "uMode"),
     };
     this.locBlit = { uTex: gl.getUniformLocation(this.blitProg, "uTex") };
-    bindFullscreenTriangle(gl);
+    this.vbo = bindFullscreenTriangle(gl);
   }
 
   private ensureSize(w: number, h: number): void {
@@ -142,11 +152,18 @@ export class Compositor {
       this.drawScene(this.fboA, cur, env);
       return { fbo: this.fboA, drawn: 1 };
     }
-    const otherId = st.nextSceneId === st.sceneId ? st.prevSceneId! : st.nextSceneId!;
+    // stateAt rende sempre attiva la scena USCENTE: quella entrante è nextSceneId, col suo tempo
+    const otherId = st.nextSceneId!;
     const other = progByScene.get(otherId);
     if (!other) throw new Error(`scena ${otherId} non compilata`);
     this.drawScene(this.fboA, cur, env);
-    this.drawScene(this.fboB, other, env);
+    const incoming: TimelineState = {
+      ...st,
+      sceneId: otherId,
+      sceneTime: st.nextSceneTime ?? 0,
+      sceneProgress: 0,
+    };
+    this.drawScene(this.fboB, other, { ...env, state: incoming });
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboC.fbo);
     gl.viewport(0, 0, this.fboC.width, this.fboC.height);
@@ -157,8 +174,8 @@ export class Compositor {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.fboB.tex);
     gl.uniform1i(this.locBlend.uTexB, 1);
-    const entering = st.nextSceneId === otherId;
-    gl.uniform1f(this.locBlend.uAlpha, entering ? st.alpha : 1 - st.alpha);
+    gl.uniform1f(this.locBlend.uAlpha, st.alpha);
+    gl.uniform1f(this.locBlend.uFlashLimit, env.uFlashLimit);
     gl.uniform1i(this.locBlend.uMode, transitionMode(st.transition));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     return { fbo: this.fboC, drawn: 2 };
@@ -181,5 +198,7 @@ export class Compositor {
     deleteFBO(this.gl, this.fboC);
     this.gl.deleteProgram(this.blendProg);
     this.gl.deleteProgram(this.blitProg);
+    if (this.vbo) this.gl.deleteBuffer(this.vbo);
+    this.vbo = null;
   }
 }

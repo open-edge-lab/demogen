@@ -37,16 +37,26 @@
           quality: { target_fps: 60, min_scale: 0.5 },
         };
       }
-      const player = new demogenPlayer.Player(canvas, payload, { autoPlay: true });
+      let quality = "";
+      const player = new demogenPlayer.Player(canvas, payload, {
+        autoPlay: true,
+        onQualityChange: (q) => { quality = "scale " + q.scale + " q " + q.uQuality + (q.bloom ? " bloom" : ""); },
+      });
       await player.load();
       window.__player = player;
+      // `demogen play` attende window.__demogen (stessa interfaccia info() dell'harness)
+      window.__demogen = { info: () => player.info };
       const info = player.info;
+      // spazio = pausa/play (la posizione resta)
+      window.addEventListener("keydown", (e) => {
+        if (e.code === "Space") { e.preventDefault(); player.isPlaying ? player.pause() : player.play(); }
+      });
       let frames = 0, last = performance.now();
       (function hudLoop() {
         frames++;
         const now = performance.now();
         if (now - last >= 1000) {
-          const q = player.qualityStateLast || "";
+          const q = quality;
           hud.textContent =
             "renderer: " + info.renderer + "\n" +
             "fps: " + (frames * 1000 / (now - last)).toFixed(1) + "\n" +
@@ -57,7 +67,11 @@
         requestAnimationFrame(hudLoop);
       })();
     }
-    boot().catch((e) => { document.getElementById("hud").textContent = "ERRORE: " + e.message; });
+    boot().catch((e) => {
+      const msg = String((e && e.message) || e);
+      window.__demogen_error = msg; // `demogen play` riporta l'errore invece di andare in timeout
+      document.getElementById("hud").textContent = "ERRORE: " + msg;
+    });
   </script>
 </body>
 </html>

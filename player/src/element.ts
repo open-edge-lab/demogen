@@ -13,18 +13,24 @@ export class DemogenPlayerElement extends ElementBase {
     return ["src", "autoplay", "loop"];
   }
 
-  private player: Player | null = null;
+  player: Player | null = null;
+  private canvas: HTMLCanvasElement | null = null;
+  private abort: AbortController | null = null;
 
-  async connectedCallback(): Promise<void> {
+  connectedCallback(): void {
+    // idempotente: spostare l'elemento nel DOM non deve creare un secondo canvas/player
+    if (this.player || this.abort) return;
+    const abort = new AbortController();
+    this.abort = abort;
+    void this.boot(abort.signal).catch((e) => this.fail(e, abort.signal));
+  }
+
+  private async boot(signal: AbortSignal): Promise<void> {
     const src = this.getAttribute("src");
-    const canvas = document.createElement("canvas");
-    canvas.style.width = "100%";
-    canvas.style.height = "100%";
-    canvas.style.display = "block";
-    this.appendChild(canvas);
     let payload: unknown;
     if (src) {
-      const res = await fetch(src);
+      const res = await fetch(src, { signal });
+      if (!res.ok) throw new Error(`fetch ${src}: HTTP ${res.status}`);
       payload = await res.json();
     } else {
       // Il parser upgrada l'elemento quando trova il tag di apertura, prima che i
@@ -38,14 +44,37 @@ export class DemogenPlayerElement extends ElementBase {
       const inline = this.querySelector('script[type="application/json"]');
       payload = inline ? JSON.parse(inline.textContent ?? "null") : null;
     }
-    this.player = new Player(canvas, parsePayload(payload), {
+    if (signal.aborted) return; // disconnesso durante il fetch: niente player orfano
+    const canvas = document.createElement("canvas");
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    canvas.style.display = "block";
+    this.appendChild(canvas);
+    this.canvas = canvas;
+    const player = new Player(canvas, parsePayload(payload), {
       autoPlay: this.getAttribute("autoplay") !== "none",
     });
-    await this.player.load();
+    this.player = player;
+    await player.load();
+    if (signal.aborted) player.dispose();
+    else this.dispatchEvent(new CustomEvent("demogen-ready"));
+  }
+
+  private fail(e: unknown, signal: AbortSignal): void {
+    if (signal.aborted) return;
+    const msg = e instanceof Error ? e.message : String(e);
+    this.setAttribute("data-error", msg);
+    this.dispatchEvent(new CustomEvent("demogen-error", { detail: e }));
+    console.error("demogen-player:", msg);
   }
 
   disconnectedCallback(): void {
+    this.abort?.abort();
+    this.abort = null;
     this.player?.dispose();
+    this.player = null;
+    this.canvas?.remove();
+    this.canvas = null;
   }
 }
 

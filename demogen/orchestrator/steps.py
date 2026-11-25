@@ -721,9 +721,12 @@ def s9_bundle(ctx, spec: DemoSpec, post: dict) -> dict:
             for slot in slots.values()
         ],
     }
-    payload = build_payload_from_sources(
-        spec_dict, best_srcs, style_src(ctx), do_minify=True, math_srcs=math_srcs
-    )
+    try:
+        payload = build_payload_from_sources(
+            spec_dict, best_srcs, style_src(ctx), do_minify=True, math_srcs=math_srcs
+        )
+    except ValueError as e:
+        raise PipelineError(f"S9: {e}") from e
     name = slugify(spec.title)  # il titolo viene dall'LLM: mai usarlo crudo come nome file
     sizes = write_bundle(payload, ctx.project.path / "out", name)
     return {"payload": payload, "sizes": sizes, "name": name}

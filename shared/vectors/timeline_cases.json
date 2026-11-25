@@ -40,6 +40,7 @@
      "bar": 0.0,
      "sceneTime": 0.0,
      "sceneProgress": 0.0,
+     "nextSceneTime": null,
      "durationS": 45.0
     }
    },
@@ -55,6 +56,7 @@
      "bar": 2.4,
      "sceneTime": 4.5,
      "sceneProgress": 0.3,
+     "nextSceneTime": null,
      "durationS": 45.0
     }
    },
@@ -70,6 +72,7 @@
      "bar": 6.0,
      "sceneTime": 11.25,
      "sceneProgress": 0.75,
+     "nextSceneTime": null,
      "durationS": 45.0
     }
    },
@@ -85,6 +88,7 @@
      "bar": 7.0,
      "sceneTime": 13.125,
      "sceneProgress": 0.875,
+     "nextSceneTime": -1.875,
      "durationS": 45.0
     }
    },
@@ -100,6 +104,7 @@
      "bar": 7.5,
      "sceneTime": 14.0625,
      "sceneProgress": 0.9375,
+     "nextSceneTime": -0.9375,
      "durationS": 45.0
     }
    },
@@ -115,6 +120,7 @@
      "bar": 7.999,
      "sceneTime": 14.998125,
      "sceneProgress": 0.999875,
+     "nextSceneTime": -0.001875000000000071,
      "durationS": 45.0
     }
    },
@@ -130,6 +136,7 @@
      "bar": 12.0,
      "sceneTime": 7.5,
      "sceneProgress": 0.5,
+     "nextSceneTime": null,
      "durationS": 45.0
     }
    },
@@ -145,6 +152,7 @@
      "bar": 14.0,
      "sceneTime": 11.25,
      "sceneProgress": 0.75,
+     "nextSceneTime": -3.75,
      "durationS": 45.0
     }
    },
@@ -160,6 +168,7 @@
      "bar": 15.0,
      "sceneTime": 13.125,
      "sceneProgress": 0.875,
+     "nextSceneTime": -1.875,
      "durationS": 45.0
     }
    },
@@ -175,6 +184,7 @@
      "bar": 15.998,
      "sceneTime": 14.99625,
      "sceneProgress": 0.99975,
+     "nextSceneTime": -0.003750000000000142,
      "durationS": 45.0
     }
    },
@@ -190,6 +200,7 @@
      "bar": 18.0,
      "sceneTime": 3.75,
      "sceneProgress": 0.25,
+     "nextSceneTime": null,
      "durationS": 45.0
     }
    },
@@ -205,6 +216,7 @@
      "bar": 21.6,
      "sceneTime": 10.5,
      "sceneProgress": 0.7,
+     "nextSceneTime": null,
      "durationS": 45.0
     }
    },
@@ -220,6 +232,7 @@
      "bar": 23.759999999999998,
      "sceneTime": 14.549999999999997,
      "sceneProgress": 0.9699999999999999,
+     "nextSceneTime": null,
      "durationS": 45.0
     }
    },
@@ -235,6 +248,7 @@
      "bar": 24.0,
      "sceneTime": 15.0,
      "sceneProgress": 1.0,
+     "nextSceneTime": null,
      "durationS": 45.0
     }
    }
@@ -274,6 +288,7 @@
      "bar": 0.0,
      "sceneTime": 0.0,
      "sceneProgress": 0.0,
+     "nextSceneTime": null,
      "durationS": 21.333333333333332
     }
    },
@@ -289,6 +304,7 @@
      "bar": 0.7999875000000001,
      "sceneTime": 2.1333,
      "sceneProgress": 0.19999687500000002,
+     "nextSceneTime": null,
      "durationS": 21.333333333333332
     }
    },
@@ -304,6 +320,7 @@
      "bar": 1.9999875000000003,
      "sceneTime": 5.3333,
      "sceneProgress": 0.49999687500000006,
+     "nextSceneTime": null,
      "durationS": 21.333333333333332
     }
    },
@@ -319,6 +336,7 @@
      "bar": 3.0,
      "sceneTime": 8.0,
      "sceneProgress": 0.75,
+     "nextSceneTime": -2.666666666666666,
      "durationS": 21.333333333333332
     }
    },
@@ -334,6 +352,7 @@
      "bar": 3.5000000000000004,
      "sceneTime": 9.333333333333334,
      "sceneProgress": 0.8750000000000001,
+     "nextSceneTime": -1.3333333333333321,
      "durationS": 21.333333333333332
     }
    },
@@ -349,6 +368,7 @@
      "bar": 3.999,
      "sceneTime": 10.664,
      "sceneProgress": 0.99975,
+     "nextSceneTime": -0.002666666666666373,
      "durationS": 21.333333333333332
     }
    },
@@ -364,6 +384,7 @@
      "bar": 4.0000125,
      "sceneTime": 3.3333333334439885e-05,
      "sceneProgress": 3.1250000001037392e-06,
+     "nextSceneTime": null,
      "durationS": 21.333333333333332
     }
    },
@@ -379,6 +400,7 @@
      "bar": 6.0,
      "sceneTime": 5.333333333333334,
      "sceneProgress": 0.5000000000000001,
+     "nextSceneTime": null,
      "durationS": 21.333333333333332
     }
    },
@@ -394,6 +416,7 @@
      "bar": 7.2,
      "sceneTime": 8.533333333333333,
      "sceneProgress": 0.8,
+     "nextSceneTime": null,
      "durationS": 21.333333333333332
     }
    },
@@ -409,6 +432,7 @@
      "bar": 7.920000000000001,
      "sceneTime": 10.453333333333335,
      "sceneProgress": 0.9800000000000002,
+     "nextSceneTime": null,
      "durationS": 21.333333333333332
     }
    },
@@ -424,6 +448,7 @@
      "bar": 7.9999875000000005,
      "sceneTime": 10.666633333333335,
      "sceneProgress": 0.9999968750000002,
+     "nextSceneTime": null,
      "durationS": 21.333333333333332
     }
    }

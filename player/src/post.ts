@@ -53,17 +53,37 @@ void main() {
 `;
 
 function makeProg(gl: WebGL2RenderingContext, frag: string): WebGLProgram {
-  const vs = gl.createShader(gl.VERTEX_SHADER)!;
-  gl.shaderSource(vs, PASS_VERT);
-  gl.compileShader(vs);
-  const fs = gl.createShader(gl.FRAGMENT_SHADER)!;
-  gl.shaderSource(fs, frag);
-  gl.compileShader(fs);
+  const sh = (type: number, src: string): WebGLShader => {
+    const s = gl.createShader(type)!;
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      const log = gl.getShaderInfoLog(s);
+      gl.deleteShader(s);
+      throw new Error(`post: compilazione fallita: ${log}`);
+    }
+    return s;
+  };
+  const vs = sh(gl.VERTEX_SHADER, PASS_VERT);
+  let fs: WebGLShader;
+  try {
+    fs = sh(gl.FRAGMENT_SHADER, frag);
+  } catch (e) {
+    gl.deleteShader(vs);
+    throw e;
+  }
   const p = gl.createProgram()!;
   gl.attachShader(p, vs);
   gl.attachShader(p, fs);
   gl.linkProgram(p);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)!);
+  const ok = gl.getProgramParameter(p, gl.LINK_STATUS);
+  const log = ok ? "" : gl.getProgramInfoLog(p);
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
+  if (!ok) {
+    gl.deleteProgram(p);
+    throw new Error(`post: link fallito: ${log}`);
+  }
   return p;
 }
 
@@ -86,12 +106,13 @@ export class Post {
     this.add = makeProg(gl, ADD_FRAG);
     this.halfA = createFBO(gl, Math.max(1, w >> 2), Math.max(1, h >> 2));
     this.halfB = createFBO(gl, Math.max(1, w >> 2), Math.max(1, h >> 2));
-    for (const [prog, names] of [
-      [this.bright, ["uTex", "uThreshold"]],
-      [this.blur, ["uTex", "uDir"]],
-      [this.add, ["uTex", "uBloom", "uIntensity"]],
+    // chiave per TAG di programma: `${prog}` varrebbe "[object WebGLProgram]" per tutti e tre
+    for (const [tag, prog, names] of [
+      ["b", this.bright, ["uTex", "uThreshold"]],
+      ["r", this.blur, ["uTex", "uDir"]],
+      ["a", this.add, ["uTex", "uBloom", "uIntensity"]],
     ] as const) {
-      for (const n of names) this.loc[`${prog}:${n}`] = gl.getUniformLocation(prog, n);
+      for (const n of names) this.loc[`${tag}:${n}`] = gl.getUniformLocation(prog, n);
     }
   }
 
@@ -110,8 +131,8 @@ export class Post {
     gl.useProgram(this.bright);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, sceneTex);
-    gl.uniform1i(this.loc[`${this.bright}:uTex`], 0);
-    gl.uniform1f(this.loc[`${this.bright}:uThreshold`], params.threshold);
+    gl.uniform1i(this.loc[`b:uTex`], 0);
+    gl.uniform1f(this.loc[`b:uThreshold`], params.threshold);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     // blur H: halfA → halfB, blur V: halfB → halfA
     for (const [src, dst, dir] of [
@@ -123,8 +144,8 @@ export class Post {
       gl.useProgram(this.blur);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, src.tex);
-      gl.uniform1i(this.loc[`${this.blur}:uTex`], 0);
-      gl.uniform2f(this.loc[`${this.blur}:uDir`], dir[0], dir[1]);
+      gl.uniform1i(this.loc[`r:uTex`], 0);
+      gl.uniform2f(this.loc[`r:uDir`], dir[0], dir[1]);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
     // add sul framebuffer corrente (canvas o FBO di output)
@@ -133,11 +154,11 @@ export class Post {
     gl.useProgram(this.add);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, sceneTex);
-    gl.uniform1i(this.loc[`${this.add}:uTex`], 0);
+    gl.uniform1i(this.loc[`a:uTex`], 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.halfA.tex);
-    gl.uniform1i(this.loc[`${this.add}:uBloom`], 1);
-    gl.uniform1f(this.loc[`${this.add}:uIntensity`], params.intensity);
+    gl.uniform1i(this.loc[`a:uBloom`], 1);
+    gl.uniform1f(this.loc[`a:uIntensity`], params.intensity);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.activeTexture(gl.TEXTURE0);
   }

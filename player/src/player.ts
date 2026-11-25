@@ -1,64 +1,95 @@
 // Player: ciclo di vita load → compile → play realtime (rAF + clock), con
 // controllore di qualità, frame pacing, profilo retro e gestione context loss.
-// Audio in Fase 2: per ora il clock è performance.now().
+// Il clock è l'AudioContext quando l'audio è attivo, altrimenti performance.now().
 
-import { Compositor, RenderEnv } from "./compositor";
-import { parsePayload, textToUniform, DemoPayload } from "./format";
-import { createGL, rendererInfo, DemogenInfo, isSoftwareRenderer } from "./gl";
-import { Post, BloomParams } from "./post";
-import { compileAll, SceneDef } from "./programs";
 import { AudioEngine, buildAudioHeader, buildAudioFragment } from "./audio";
-import { QualityController, QualityState, DEFAULT_LIMITS } from "./quality";
+import { PlaybackClock } from "./clock";
+import { Compositor, RenderEnv } from "./compositor";
+import { DemoPayload, parsePayload, textByteLength, textToUniform } from "./format";
+import { createGL, DemogenInfo, isSoftwareRenderer, rendererInfo } from "./gl";
+import { BloomParams, Post } from "./post";
+import { buildHeader, CompiledProgram, compileAll, detectMap, SceneDef } from "./programs";
+import { DEFAULT_LIMITS, QualityController, QualityState } from "./quality";
 import { stateAt, Timeline } from "./timeline";
 
 export interface PlayerOptions {
   preserveDrawingBuffer?: boolean; // true nell'harness per capture via toDataURL
   autoPlay?: boolean;
+  /** false: la dimensione del canvas la decide il chiamante (harness); default: segue il layout. */
+  autoResize?: boolean;
+  /** AudioContext già sbloccato da un gesto utente (es. il click del bundle). */
+  audioContext?: AudioContext;
+  /** Limite fotosensibilità (0..1) applicato a beatFlash e alle transizioni flash. */
+  flashLimit?: number;
   onReady?: () => void;
   onError?: (e: unknown) => void;
   onQualityChange?: (q: QualityState) => void;
 }
 
+/** Sotto il 10% di variazione di luminanza: un lampo che non conta come flash WCAG. */
+export const SAFE_FLASH_LIMIT = 0.08;
+
+/** uFlashLimit: pieno, salvo beat più veloci di 3/s (lampi oltre la soglia WCAG) o reduced-motion. */
+export function flashLimitFor(bpm: number, reducedMotion: boolean, requested = 1): number {
+  const lim = bpm / 60 > 3 || reducedMotion ? SAFE_FLASH_LIMIT : 1;
+  return Math.max(0, Math.min(requested, lim));
+}
+
 export class Player {
   readonly gl: WebGL2RenderingContext;
-  private payload: DemoPayload;
-  private compositor!: Compositor;
-  private post!: Post;
-  private quality: QualityController;
-  private progs = new Map<string, import("./programs").CompiledProgram>();
-  private text: Int32Array;
-  private playing = false;
-  private rafId = 0;
-  private startMs = 0;
-  private offsetS = 0;
-  private lost = false;
+  readonly durationS: number;
   audio: AudioEngine | null = null;
-  private lastQuality: QualityState | null = null;
-  private internalW = 0;
-  private internalH = 0;
+  compileMs = 0;
+  private payload: DemoPayload;
+  private compositor: Compositor | null = null;
+  private post: Post | null = null;
+  private quality: QualityController;
+  private clock: PlaybackClock;
+  private progs = new Map<string, CompiledProgram>();
+  private text: Int32Array;
+  private textLen: number;
+  private flashLimit: number;
   private minScale: number;
-
-  /** Qualità minima della scala adattiva (pavimento perf: scala minima, uQuality 0, niente bloom). */
-  floorQuality(): QualityState {
-    return { scale: this.minScale, uQuality: 0, bloom: false };
-  }
+  private rafId = 0;
+  private lastFrameAt = 0;
+  private lost = false;
+  private disposed = false;
+  private lastQuality: QualityState | null = null;
+  private audioFrag = "";
+  private floatFBO: { fbo: WebGLFramebuffer; tex: WebGLTexture; width: number; height: number } | null = null;
+  private ro: ResizeObserver | null = null;
+  private readonly onLost = (e: Event): void => {
+    e.preventDefault();
+    this.lost = true;
+    this.stopLoop();
+  };
+  private readonly onRestored = (): void => {
+    this.lost = false;
+    void this.rebuild();
+  };
+  private readonly onGesture = (): void => {
+    const a = this.audio;
+    if (!a) return;
+    void a.unlock().then(() => {
+      if (!a.locked && this.clock.isPlaying) a.start(this.clock.raw());
+    });
+  };
+  private gestureBound = false;
 
   constructor(
     readonly canvas: HTMLCanvasElement,
     payload: DemoPayload,
     private opts: PlayerOptions = {},
   ) {
-    this.gl = createGL(canvas);
-    if (opts.preserveDrawingBuffer) {
-      // ricrea con preserve (l'harness cattura via toDataURL)
-      const gl2 = canvas.getContext("webgl2", {
-        antialias: false, alpha: false, depth: false, stencil: false,
-        powerPreference: "high-performance", preserveDrawingBuffer: true,
-      });
-      if (gl2) (this as { gl: WebGL2RenderingContext }).gl = gl2;
-    }
+    this.gl = createGL(canvas, !!opts.preserveDrawingBuffer);
     this.payload = parsePayload(payload);
+    const tl = this.payload.timeline as Timeline;
+    this.durationS = stateAt(tl, 0).durationS; // la timeline è la verità, meta.duration_s solo indicativa
+    this.clock = new PlaybackClock(() => performance.now(), this.durationS, !!this.payload.meta.loop);
     this.text = textToUniform(this.payload.text);
+    this.textLen = textByteLength(this.payload.text);
+    const reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.flashLimit = flashLimitFor(tl.bpm, reduced, opts.flashLimit ?? 1);
     const q = this.payload.quality ?? {};
     this.minScale = q.min_scale ?? DEFAULT_LIMITS.minScale;
     this.quality = new QualityController({
@@ -66,15 +97,12 @@ export class Player {
       minScale: this.minScale,
       bloom: this.payload.post?.bloom !== undefined,
     });
-    canvas.addEventListener("webglcontextlost", (e) => {
-      e.preventDefault();
-      this.lost = true;
-      this.playing = false;
-    });
-    canvas.addEventListener("webglcontextrestored", () => {
-      this.lost = false;
-      void this.rebuild();
-    });
+    canvas.addEventListener("webglcontextlost", this.onLost);
+    canvas.addEventListener("webglcontextrestored", this.onRestored);
+    if (opts.autoResize !== false && typeof ResizeObserver !== "undefined") {
+      this.ro = new ResizeObserver(() => this.resize());
+      this.ro.observe(canvas);
+    }
   }
 
   get info(): DemogenInfo {
@@ -85,8 +113,22 @@ export class Player {
     return isSoftwareRenderer(this.info.renderer);
   }
 
-  get durationS(): number {
-    return this.payload.meta.duration_s;
+  get isPlaying(): boolean {
+    return this.clock.isPlaying;
+  }
+
+  get bpm(): number {
+    return this.payload.timeline.bpm;
+  }
+
+  /** Qualità minima della scala adattiva (pavimento perf: scala minima, uQuality 0, niente bloom). */
+  floorQuality(): QualityState {
+    return { scale: this.minScale, uQuality: 0, bloom: false };
+  }
+
+  /** Sorgente GLSL completa dello shader audio (per test/harness). */
+  get audioFragment(): string {
+    return this.audioFrag;
   }
 
   async load(): Promise<void> {
@@ -96,148 +138,157 @@ export class Player {
       const profile = p.render.overrides?.[s.id] ?? p.render.profile;
       return { id: s.id, src: p.scenes[s.id], profile };
     });
-    const common = p.common;
     const headerFor = (s: SceneDef): string =>
-      buildHeaderStr({
+      buildHeader({
         bpm: tl.bpm,
         retro: s.profile === "retro",
-        withText: p.text !== undefined,
-        hasMap: /\bfloat\s+map\s*\(/.test(s.src),
+        withText: p.text !== undefined, // anche text:null dichiara uText (le scene scroller lo usano)
+        hasMap: detectMap(s.src),
       });
     const t0 = performance.now();
-    const compiled = await compileAll(
-      this.gl,
-      headerFor,
-      { modern: common, retro: common },
-      scenes,
-    );
-    const all = compiled;
-    this.progs = all;
+    this.progs = await compileAll(this.gl, headerFor, { modern: p.common, retro: p.common }, scenes);
     this.compileMs = performance.now() - t0;
     this.compositor = new Compositor(this.gl, 640, 360);
     this.post = new Post(this.gl, this.compositor, 640, 360);
-    // Fase 2: audio GPU (se il payload ha `audio`); sblocco su primo gesto (policy autoplay)
+    // Fase 2: audio GPU (se il payload ha `audio`); sblocco su gesto utente (policy autoplay)
     if (p.audio) {
       // p.audio è self-contained (lib treeshaked + sorgente): no common video, niente doppioni
-      const frag = buildAudioFragment(buildAudioHeader(tl.bpm), "", p.audio);
-      this.audio = new AudioEngine(this.gl, frag, tl.bpm, {
+      this.audioFrag = buildAudioFragment(buildAudioHeader(tl.bpm), "", p.audio);
+      // restore dopo context loss: si riusa lo stesso AudioContext (niente motori duplicati)
+      const prev = this.audio?.releaseContext() ?? null;
+      const ctx = prev?.ctx ?? this.opts.audioContext ?? null;
+      this.audio = new AudioEngine(this.gl, this.audioFrag, tl.bpm, {
         prebufferS: 8,
         maxRenderMsPerFrame: 2,
+        loopDurS: p.meta.loop ? this.durationS : 0,
+        audioContext: ctx,
+        ownsContext: prev ? prev.owned : false,
       });
-      const unlock = () => {
-        void this.audio?.unlock();
-        if (this.audio && !this.audio.locked && this.playing) this.audio.start(this.currentTime());
-      };
-      window.addEventListener("pointerdown", unlock, { once: false });
-      window.addEventListener("keydown", unlock, { once: false });
+      if (ctx) await this.audio.unlock();
+      if (!this.gestureBound && typeof window !== "undefined") {
+        window.addEventListener("pointerdown", this.onGesture);
+        window.addEventListener("keydown", this.onGesture);
+        this.gestureBound = true;
+      }
     }
+    if (this.opts.autoResize !== false) this.resize();
     if (this.opts.autoPlay !== false) this.play();
     this.opts.onReady?.();
   }
 
-  compileMs = 0;
-
   private async rebuild(): Promise<void> {
-    // dopo context loss: ricompila tutto
+    // dopo context loss le risorse GL sono perse: ricompila (l'AudioContext resta lo stesso)
+    const wasPlaying = this.clock.isPlaying;
+    this.clock.pause(this.audio?.now());
+    this.audio?.stop();
     this.progs.clear();
-    await this.load();
+    this.floatFBO = null;
+    try {
+      await this.load();
+      if (wasPlaying && this.opts.autoPlay === false) this.play();
+    } catch (e) {
+      this.opts.onError?.(e);
+    }
   }
 
   play(): void {
-    if (this.playing || this.lost) return;
-    this.playing = true;
-    this.startMs = performance.now() - this.offsetS * 1000;
-    if (this.audio && !this.audio.locked) this.audio.start(this.currentTime());
+    if (this.clock.isPlaying || this.lost || this.disposed) return;
+    if (this.opts.autoResize !== false) this.resize();
+    if (!this.payload.meta.loop && this.clock.ended()) this.clock.seek(0);
+    this.clock.play();
+    if (this.audio && !this.audio.locked) this.audio.start(this.clock.raw());
+    this.lastFrameAt = 0;
     const loop = (now: number) => {
-      if (!this.playing) return;
+      if (!this.clock.isPlaying) return;
       this.rafId = requestAnimationFrame(loop);
       if (!this.quality.shouldRender(now)) return;
       const t0 = performance.now();
       this.renderFrameAt(this.currentTime());
       if (this.audio) this.audio.pump(2); // render audio in background, ≤ 2 ms/frame
-      const frameMs = performance.now() - t0;
+      // durata del frame = intervallo tra frame renderizzati (include il lavoro GPU), min. il tempo CPU
+      const cpuMs = performance.now() - t0;
+      const frameMs = this.lastFrameAt ? Math.max(cpuMs, now - this.lastFrameAt) : cpuMs;
+      this.lastFrameAt = now;
       this.quality.update(frameMs, now);
       const q = this.quality.state;
       if (JSON.stringify(q) !== JSON.stringify(this.lastQuality)) {
         this.lastQuality = q;
         this.opts.onQualityChange?.(q);
       }
+      if (this.clock.ended(this.audio?.now())) this.pause(); // fine demo (senza loop)
     };
     this.rafId = requestAnimationFrame(loop);
   }
 
   pause(): void {
-    this.playing = false;
-    cancelAnimationFrame(this.rafId);
+    // salva la posizione PRIMA di fermare l'audio (che è il clock master)
+    this.clock.pause(this.audio?.now());
+    this.stopLoop();
     this.audio?.stop();
   }
 
+  private stopLoop(): void {
+    cancelAnimationFrame(this.rafId);
+    this.rafId = 0;
+  }
+
   seek(t: number): void {
-    this.offsetS = Math.max(0, Math.min(this.durationS, t));
-    this.startMs = performance.now() - this.offsetS * 1000;
-    this.audio?.seek(this.offsetS);
+    this.clock.seek(t);
+    this.audio?.seek(this.clock.raw());
   }
 
   currentTime(): number {
-    if (this.audio) {
-      const a = this.audio.now();
-      if (a !== null) return Math.min(a, this.durationS);
-    }
-    return this.offsetS + (performance.now() - this.startMs) / 1000;
+    return this.clock.time(this.audio?.now());
   }
 
   private makeEnv(t: number, w: number, h: number, q: QualityState): RenderEnv {
-    const p = this.payload;
-    const tl = p.timeline as Timeline;
-    const st = stateAt(tl, p.meta.loop ? t % this.durationS : Math.min(t, this.durationS));
+    const tl = this.payload.timeline as Timeline;
+    const tw = this.clock.wrap(t);
     return {
-      t,
-      state: st,
+      t: tw,
+      state: stateAt(tl, tw),
       width: w,
       height: h,
       uQuality: q.uQuality,
-      uFlashLimit: 1,
+      uFlashLimit: this.flashLimit,
       text: this.text,
-      textLen: p.text ? Math.min(256, p.text.length) : 0,
+      textLen: this.textLen,
     };
   }
 
   /** Renderizza un frame al tempo t (deterministico, usato anche dall'harness). */
   renderFrameAt(t: number, forceQuality?: QualityState): QualityState {
+    if (!this.compositor || !this.post) throw new Error("load() prima di renderFrameAt");
     const p = this.payload;
     const q = forceQuality ?? this.quality.state;
-    const sceneProfile =
-      p.render.overrides?.[stateAt(p.timeline as Timeline, Math.min(t, this.durationS)).sceneId] ??
-      p.render.profile;
+    const tw = this.clock.wrap(t); // stesso tempo (con loop) per profilo, stato e uniform
+    const sceneProfile = p.render.overrides?.[stateAt(p.timeline as Timeline, tw).sceneId] ?? p.render.profile;
     const retroRes = p.render.retro?.internal_resolution ?? [320, 180];
     const cw = this.canvas.width;
     const ch = this.canvas.height;
-    const w = sceneProfile === "retro" ? retroRes[0] : Math.max(1, Math.round(cw * q.scale));
-    const h = sceneProfile === "retro" ? retroRes[1] : Math.max(1, Math.round(ch * q.scale));
-    const env = this.makeEnv(t, w, h, q);
-    const { fbo } = this.compositor.render(env, this.progs);
-    // blit sul canvas: per retro texture con filtro nearest (pixel netti)
+    const retro = sceneProfile === "retro";
+    const w = retro ? retroRes[0] : Math.max(1, Math.round(cw * q.scale));
+    const h = retro ? retroRes[1] : Math.max(1, Math.round(ch * q.scale));
+    const { fbo } = this.compositor.render(this.makeEnv(tw, w, h, q), this.progs);
+    // blit sul canvas: retro con filtro nearest (pixel netti), modern lineare — impostato a OGNI frame,
+    // perché gli FBO sono condivisi tra scene di profili diversi
     const gl = this.gl;
-    if (sceneProfile === "retro") {
-      gl.bindTexture(gl.TEXTURE_2D, fbo.tex);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    }
+    const filter = retro ? gl.NEAREST : gl.LINEAR;
+    gl.bindTexture(gl.TEXTURE_2D, fbo.tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     const bloom: BloomParams | null = q.bloom && p.post?.bloom
       ? { threshold: p.post.bloom.threshold, intensity: p.post.bloom.intensity }
       : null;
-    if (bloom) {
-      // bloom su FBO a scala, poi blit sul canvas
-      this.post.apply(fbo.tex, cw, ch, bloom);
-    } else {
-      this.compositor.blit(fbo.tex, cw, ch);
-    }
+    if (bloom) this.post.apply(fbo.tex, cw, ch, bloom);
+    else this.compositor.blit(fbo.tex, cw, ch);
     return q;
   }
 
+  /** Adegua il buffer del canvas alla sua dimensione CSS × devicePixelRatio (max 2). */
   resize(): void {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min((typeof window !== "undefined" && window.devicePixelRatio) || 1, 2);
     const w = Math.max(1, Math.floor(this.canvas.clientWidth * dpr));
     const h = Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
     if (this.canvas.width !== w || this.canvas.height !== h) {
@@ -247,26 +298,24 @@ export class Player {
   }
 
   captureDataURL(t: number): string {
-    this.resize();
+    if (this.opts.autoResize !== false) this.resize();
     this.renderFrameAt(t);
     this.gl.finish();
     return this.canvas.toDataURL("image/png");
   }
-
-  private floatFBO: { fbo: WebGLFramebuffer; tex: WebGLTexture; width: number; height: number } | null =
-    null;
 
   /**
    * Statistiche float della scena a tempo t: renderizza in FBO RGBA32F
    * (EXT_color_buffer_float) e legge NaN/Inf/luma — prima della quantizzazione.
    */
   sceneStats(t: number, width?: number, height?: number): Record<string, number> {
+    if (!this.compositor) throw new Error("load() prima di sceneStats");
     const gl = this.gl;
     const ext = gl.getExtension("EXT_color_buffer_float");
     const w = width ?? this.canvas.width;
     const h = height ?? this.canvas.height;
-    const p = this.payload;
-    const st = stateAt(p.timeline as Timeline, Math.min(t, this.durationS));
+    const tw = this.clock.wrap(t);
+    const st = stateAt(this.payload.timeline as Timeline, tw);
     const cp = this.progs.get(st.sceneId);
     if (!cp) throw new Error(`scena ${st.sceneId} non compilata`);
     if (!ext) {
@@ -288,7 +337,7 @@ export class Player {
       this.floatFBO.width = w;
       this.floatFBO.height = h;
     }
-    const env = this.makeEnv(t, w, h, { scale: 1, uQuality: 1, bloom: false });
+    const env = this.makeEnv(tw, w, h, { scale: 1, uQuality: 1, bloom: false });
     this.compositor.drawScene(this.floatFBO as never, cp, env);
     const buf = new Float32Array(w * h * 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.floatFBO.fbo);
@@ -309,12 +358,33 @@ export class Player {
     return { nan_ratio: nan / n, inf_ratio: inf / n, luma_mean: sum / n, float_path: 1 };
   }
 
+  /** Libera tutto: loop, listener, ResizeObserver, programmi, FBO, VBO, audio (AudioContext incluso). */
   dispose(): void {
+    if (this.disposed) return;
     this.pause();
+    this.disposed = true;
+    this.ro?.disconnect();
+    this.ro = null;
+    this.canvas.removeEventListener("webglcontextlost", this.onLost);
+    this.canvas.removeEventListener("webglcontextrestored", this.onRestored);
+    if (this.gestureBound) {
+      window.removeEventListener("pointerdown", this.onGesture);
+      window.removeEventListener("keydown", this.onGesture);
+      this.gestureBound = false;
+    }
+    const gl = this.gl;
+    for (const cp of this.progs.values()) gl.deleteProgram(cp.prog);
+    this.progs.clear();
+    if (this.floatFBO) {
+      gl.deleteFramebuffer(this.floatFBO.fbo);
+      gl.deleteTexture(this.floatFBO.tex);
+      this.floatFBO = null;
+    }
     this.compositor?.dispose();
     this.post?.dispose();
+    this.compositor = null;
+    this.post = null;
+    this.audio?.dispose();
+    this.audio = null;
   }
 }
-
-// import locale per evitare dipendenza circolare in cima
-import { buildHeader as buildHeaderStr } from "./programs";

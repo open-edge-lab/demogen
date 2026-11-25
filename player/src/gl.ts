@@ -19,14 +19,16 @@ export function isSoftwareRenderer(name: string): boolean {
   );
 }
 
-export function createGL(canvas: HTMLCanvasElement): WebGL2RenderingContext {
+/** Contesto WebGL2. Gli attributi valgono solo alla PRIMA getContext sul canvas:
+ *  preserveDrawingBuffer va deciso qui (l'harness lo vuole per toDataURL). */
+export function createGL(canvas: HTMLCanvasElement, preserveDrawingBuffer = false): WebGL2RenderingContext {
   const gl = canvas.getContext("webgl2", {
     antialias: false,
     alpha: false,
     depth: false,
     stencil: false,
     powerPreference: "high-performance",
-    preserveDrawingBuffer: false,
+    preserveDrawingBuffer,
   });
   if (!gl) throw new Error("WebGL2 non disponibile");
   return gl;
@@ -69,17 +71,26 @@ export function compileShader(
 
 export function createProgram(gl: WebGL2RenderingContext, fragSrc: string): WebGLProgram {
   const vs = compileShader(gl, gl.VERTEX_SHADER, VERT);
-  const fs = compileShader(gl, gl.FRAGMENT_SHADER, fragSrc);
+  let fs: WebGLShader;
+  try {
+    fs = compileShader(gl, gl.FRAGMENT_SHADER, fragSrc);
+  } catch (e) {
+    gl.deleteShader(vs);
+    throw e;
+  }
   const prog = gl.createProgram();
   if (!prog) throw new Error("createProgram fallita");
   gl.attachShader(prog, vs);
   gl.attachShader(prog, fs);
   gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-    throw new Error(`Errore di link:\n${gl.getProgramInfoLog(prog)}`);
-  }
-  gl.deleteShader(vs);
+  const ok = gl.getProgramParameter(prog, gl.LINK_STATUS);
+  const log = ok ? "" : gl.getProgramInfoLog(prog);
+  gl.deleteShader(vs); // gli shader servono solo fino al link (anche se fallisce)
   gl.deleteShader(fs);
+  if (!ok) {
+    gl.deleteProgram(prog);
+    throw new Error(`Errore di link:\n${log}`);
+  }
   return prog;
 }
 
@@ -88,13 +99,14 @@ layout(location = 0) in vec2 aPos;
 void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
 `;
 
-/** Triangolo fullscreen nel VBO 0. */
-export function bindFullscreenTriangle(gl: WebGL2RenderingContext): void {
+/** Triangolo fullscreen nel VBO 0; ritorna il buffer (da liberare in dispose). */
+export function bindFullscreenTriangle(gl: WebGL2RenderingContext): WebGLBuffer | null {
   const vbo = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
   gl.enableVertexAttribArray(0);
   gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  return vbo;
 }
 
 export interface FBO {

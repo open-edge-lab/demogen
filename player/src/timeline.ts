@@ -27,6 +27,8 @@ export interface TimelineState {
   bar: number;
   sceneTime: number; // secondi dall'inizio della scena attiva
   sceneProgress: number; // 0..1 nella scena attiva
+  /** Durante una transizione: tempo della scena ENTRANTE (negativo prima del suo start_bar). */
+  nextSceneTime: number | null;
   durationS: number; // durata totale della timeline
 }
 
@@ -50,6 +52,7 @@ export function stateAt(tl: Timeline, t: number): TimelineState {
   let alpha = 1;
   let prevSceneId: string | null = null;
   let nextSceneId: string | null = null;
+  let nextSceneTime: number | null = null;
   if (idx + 1 < scenes.length) {
     const nxt = scenes[idx + 1];
     const t0 = nxt.start_bar - nxt.transition_bars;
@@ -58,6 +61,7 @@ export function stateAt(tl: Timeline, t: number): TimelineState {
       alpha = (bar - t0) / nxt.transition_bars;
       prevSceneId = cur.id;
       nextSceneId = nxt.id;
+      nextSceneTime = t - nxt.start_bar * tl.beats_per_bar * secPerBeat;
     }
   }
 
@@ -73,6 +77,7 @@ export function stateAt(tl: Timeline, t: number): TimelineState {
     bar,
     sceneTime: t - sceneStartS,
     sceneProgress: sceneDurS > 0 ? Math.min(1, Math.max(0, (t - sceneStartS) / sceneDurS)) : 0,
+    nextSceneTime,
     durationS,
   };
 }

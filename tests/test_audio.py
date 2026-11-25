@@ -52,6 +52,17 @@ def test_audio_compila_e_renderizza_continuita_chunk(harness) -> None:
     assert abs(peak - 440.0) < 5.0, f"picco a {peak:.1f} Hz invece di 440"
 
 
+def test_audio_fallback_rgba8_uguale_al_float(harness) -> None:
+    """Il percorso senza float FBO (16 bit per canale su RGBA8) decodifica lo stesso segnale."""
+    res = harness.load(_payload_with_audio(SIN_AUDIO))
+    assert res["ok"], res["errors"]
+    f = np.concatenate([np.asarray(b, dtype=np.float64) for b in harness.render_audio(0.0, 2)])
+    p = np.concatenate([np.asarray(b, dtype=np.float64) for b in harness.page.evaluate(
+        "(o) => window.__demogen.renderAudio(o)", {"t0": 0.0, "blocks": 2, "pack8": True})])
+    assert np.abs(f).max() > 0.5
+    assert np.abs(f - p).max() < 1e-4  # quantizzazione a 16 bit: ~3e-5
+
+
 def test_chip_synth_fft_kick_hat(harness) -> None:
     """Il chip demo (kick/hat/snare/bass) renderizzato su GPU ha: energia dominante
     del kick sotto i 200 Hz e hat con energia sopra i 5 kHz."""

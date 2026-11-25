@@ -35,6 +35,8 @@ class TimelineState(TypedDict):
     bar: float
     sceneTime: float
     sceneProgress: float
+    # durante una transizione: tempo della scena ENTRANTE (negativo prima del suo start_bar)
+    nextSceneTime: float | None
     durationS: float
 
 
@@ -61,6 +63,7 @@ def state_at(tl: TimelineDict | Any, t: float) -> TimelineState:
     alpha = 1.0
     prev_scene_id: str | None = None
     next_scene_id: str | None = None
+    next_scene_time: float | None = None
     if idx + 1 < len(scenes):
         nxt = scenes[idx + 1]
         t0 = nxt["start_bar"] - nxt["transition_bars"]
@@ -70,6 +73,7 @@ def state_at(tl: TimelineDict | Any, t: float) -> TimelineState:
             alpha = (bar - t0) / nxt["transition_bars"]
             prev_scene_id = cur["id"]
             next_scene_id = nxt["id"]
+            next_scene_time = t - nxt["start_bar"] * bpb * sec_per_beat
 
     scene_start_s = cur["start_bar"] * bpb * sec_per_beat
     scene_dur_s = cur["bars"] * bpb * sec_per_beat
@@ -85,5 +89,6 @@ def state_at(tl: TimelineDict | Any, t: float) -> TimelineState:
         "sceneProgress": (
             min(1.0, max(0.0, (t - scene_start_s) / scene_dur_s)) if scene_dur_s > 0 else 0.0
         ),
+        "nextSceneTime": next_scene_time,
         "durationS": duration_s,
     }

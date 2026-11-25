@@ -111,6 +111,27 @@ def _finalize_payload(spec: dict, bpm: float, bpb: int, scenes_spec: list,
     return payload
 
 
+# Avvio del bundle al primo click:
+# - l'AudioContext nasce e fa resume() DENTRO il gesto (policy autoplay), poi passa al Player:
+#   i listener di sblocco del Player arriverebbero dopo la compilazione, a click già finito;
+# - l'HUD resta su "caricamento…" e mostra gli errori di costruttore e load();
+# - spazio = pausa/play (la posizione resta).
+_BOOT_JS = (
+    "const hud=document.getElementById('hud');"
+    "const fail=e=>{hud.style.display='flex';hud.textContent='ERRORE: '+((e&&e.message)||e);};"
+    "hud.addEventListener('click',()=>{"
+    "hud.textContent='caricamento…';let ac;"
+    "try{const AC=window.AudioContext||window.webkitAudioContext;"
+    "if(AC&&PAYLOAD.audio){ac=new AC();ac.resume();}}catch(e){}"
+    "let p;try{p=new demogenPlayer.Player(document.getElementById('c'),PAYLOAD,{autoPlay:true,audioContext:ac});}"
+    "catch(e){fail(e);return;}"
+    "window.__player=p;p.load().then(()=>{hud.style.display='none';}).catch(fail);"
+    "},{once:true});"
+    "addEventListener('keydown',e=>{const p=window.__player;"
+    "if(e.code==='Space'&&p){e.preventDefault();p.isPlaying?p.pause():p.play();}});"
+)
+
+
 def script_json(obj: object) -> str:
     """JSON sicuro dentro <script>: `<` → `\\u003c` neutralizza `</script>` e `<!--`.
 
@@ -143,12 +164,7 @@ def write_bundle(payload: dict, out_dir: Path, name: str) -> dict:
         "<canvas id=\"c\"></canvas><div id=\"hud\">click per avviare</div>"
         f"<script>{player_js}</script>"
         f"<script>const PAYLOAD={script_json(payload)};</script>"
-        "<script>"
-        "document.getElementById('hud').addEventListener('click',()=>{"
-        "document.getElementById('hud').remove();"
-        "const p=new demogenPlayer.Player(document.getElementById('c'),PAYLOAD,{autoPlay:true});"
-        "p.load();window.__player=p;},{once:true});"
-        "</script></body></html>"
+        f"<script>{_BOOT_JS}</script></body></html>"
     )
     html_path = out_dir / f"{name}.html"
     html_path.write_text(html, encoding="utf-8")

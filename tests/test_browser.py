@@ -80,7 +80,6 @@ def test_enter_fallito_chiude_playwright_e_server(monkeypatch) -> None:
     assert s._playwright is None and s._server is None
 
 
-@pytest.mark.xfail(strict=True, reason="review #23 (batch F): index.html non espone window.__demogen")
 def test_play_index_html_si_apre_senza_timeout() -> None:
     require_browser()
     from demogen.cli import _payload_from_file, open_player
@@ -88,11 +87,39 @@ def test_play_index_html_si_apre_senza_timeout() -> None:
     payload = _payload_from_file(ROOT / "examples" / "timeline.json", 120.0)
     with BrowserSession(gpu="swiftshader", headless=True, timeout_ms=20_000) as s:
         info = open_player(s, payload)
+        # canvas a tutto schermo (resize al load/play, non 300×150)
+        size = s.page.evaluate("() => [__player.canvas.width, __player.canvas.height, innerWidth, innerHeight]")
+        # pausa: la posizione resta; play riprende da lì (prima pause() riportava a 0)
+        s.page.wait_for_timeout(600)
+        t_pause = s.page.evaluate("() => { __player.pause(); return __player.currentTime(); }")
+        s.page.wait_for_timeout(400)
+        t_still = s.page.evaluate("() => __player.currentTime()")
+        t_resume = s.page.evaluate(
+            "() => new Promise(r => { __player.play(); setTimeout(() => r(__player.currentTime()), 300); })"
+        )
     assert info["webgl2"]
     assert not (ROOT / "player" / ".tmp-demo.json").exists()
+    assert size[0] >= size[2] and size[1] >= size[3], size
+    assert t_pause > 0.3
+    assert t_still == pytest.approx(t_pause, abs=1e-6)
+    assert t_pause < t_resume < t_pause + 2.0
 
 
-@pytest.mark.xfail(strict=True, reason="review #21 (batch F): LINK_STATUS non controllato")
+def test_harness_load_ripetuti_liberano_il_player_precedente(harness) -> None:
+    import io
+
+    from PIL import Image
+
+    src = "void mainImage(out vec4 c, in vec2 p){ c = vec4(0.5, 0.6, 0.7, 1.0); }\n"
+    for _ in range(5):
+        assert harness.load_fragment(src)["ok"]
+    # dopo i dispose (programmi, FBO, VBO cancellati) il player corrente rende ancora e GL è pulito
+    png = harness.capture([0.5], 64, 36)[0]
+    assert Image.open(io.BytesIO(png)).convert("L").getextrema()[1] > 100
+    err = harness.page.evaluate("() => document.getElementById('c').getContext('webgl2').getError()")
+    assert err == 0
+
+
 def test_link_fallito_riportato_ok_false(harness) -> None:
     # compila (vUv dichiarato in input) ma il link fallisce: il vertex shader non lo produce
     src = "in vec2 vUv;\nvoid mainImage(out vec4 c, in vec2 p){ c = vec4(vUv, 0.0, 1.0); }\n"
