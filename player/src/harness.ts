@@ -142,7 +142,15 @@ function stats(opts: { times: number[]; width: number; height: number }): Record
   return opts.times.map((t) => current!.player.sceneStats(t, opts.width, opts.height));
 }
 
-/** ms per tempo (mediana su repeats), fuori da rAF, con fence+finish.
+// gl.finish() NON attende la GPU in Chromium (misurava 0,1 ms per frame da 2,5 s su SwiftShader):
+// la lettura di un pixel invece deve per forza aspettare la fine del render.
+const SYNC_PX = new Uint8Array(4);
+function syncGPU(gl: WebGL2RenderingContext): void {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, SYNC_PX);
+}
+
+/** ms per tempo (mediana su repeats), fuori da rAF, sincronizzati con la lettura di un pixel.
  *  Il timer query (EXT_disjoint_timer_query_webgl2) è opzionale: in headless
  *  il busy-wait sul risultato può bloccare, quindi di default si usa il fence. */
 function profile(opts: {
@@ -187,13 +195,13 @@ function profile(opts: {
           // fallback fence
           const t0 = performance.now();
           player.renderFrameAt(t, fq);
-          gl.finish();
+          syncGPU(gl);
           ms = performance.now() - t0;
         }
       } else {
         const t0 = performance.now();
         player.renderFrameAt(t, fq);
-        gl.finish();
+        syncGPU(gl);
         ms = performance.now() - t0;
       }
       vals.push(ms);
@@ -201,7 +209,7 @@ function profile(opts: {
     vals.sort((a, b) => a - b);
     samples[t] = vals[Math.floor(vals.length / 2)];
   }
-  return { method: ext ? "timer_query" : "fence", samples };
+  return { method: ext ? "timer_query" : "readpixels", samples };
 }
 
 function info(): DemogenInfo {

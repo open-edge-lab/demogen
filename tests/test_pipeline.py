@@ -202,6 +202,31 @@ def test_s2_envelope_malformato_ritentato_e_isolato(tmp_path: Path, scripted) ->
     assert scripted.log == ["draft:s2"]
 
 
+class _PayingLLM(_ScriptedLLM):
+    """Come _ScriptedLLM ma addebita 0.25 USD al budget della pipeline a ogni risposta."""
+
+    def __init__(self, config=None, role: str = "orchestrator", **kw) -> None:
+        super().__init__(config, role, **kw)
+        self.budget = kw.get("budget")
+
+    def _respond(self, step: str, prompt_hint: str = "") -> FakeResponse:
+        if self.budget is not None:
+            self.budget.add("m", 0, 0, 0.25)
+        return super()._respond(step, prompt_hint)
+
+
+def test_spesa_salvata_anche_se_la_pipeline_fallisce(tmp_path: Path, scripted) -> None:
+    scripted.script = {"style": ["RAISE"]}
+    proj = Project(tmp_path / "p")
+    pipe = Pipeline(proj, CFG, client_factory=lambda c=None, r="orchestrator", **kw: _PayingLLM(c, r, **kw))
+    with pytest.raises(RuntimeError, match="crash simulato"):
+        pipe.run("x", duration_s=8, bpm=120)
+    state = json.loads((proj.path / "state.json").read_text(encoding="utf-8"))
+    # brief + style (pagato prima del crash): prima si salvava solo la spesa di S0
+    assert state["budget_spent_usd"] == pytest.approx(0.5)
+    assert Pipeline(proj, CFG, client_factory=_scripted_factory).budget.spent_usd == pytest.approx(0.5)
+
+
 # ---------------------------------------------------------------- resume e revise (browser)
 def test_resume_senza_nuove_chiamate_e_revise_max_piu_uno(tmp_path: Path, scripted) -> None:
     require_browser()

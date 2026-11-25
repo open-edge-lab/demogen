@@ -93,6 +93,10 @@ class Pipeline:
             return self._run_steps(state, req)
         except BudgetExceeded as e:
             return self._stop_for_budget(state, e)
+        except BaseException:
+            # qualsiasi errore: la spesa già addebitata va salvata, o il resume la sottostimerebbe
+            self._save(state)
+            raise
 
     def resume(self) -> DemoSpec:
         """Riprende dal punto salvato in state.json senza rifare il lavoro (e le chiamate) già fatto."""

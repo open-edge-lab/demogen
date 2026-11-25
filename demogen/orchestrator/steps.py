@@ -31,7 +31,7 @@ from ..critic.metrics_video import video_metrics
 from ..critic.sheets import burst_sheet, contact_sheet, diff_heatmap
 from ..glsl.treeshake import load_library, treeshake
 from ..llm.budget import BudgetExceeded
-from ..llm.client import LLMTruncated
+from ..llm.client import LLMTruncated, achat_with_room, chat_with_room
 from ..llm.envelope import EnvelopeError, parse_envelope
 from ..llm.structured import chat_structured
 from ..project.store import slugify
@@ -227,7 +227,8 @@ def s0_brief(ctx, prompt: str, duration_s: float, bpm: float, profile: str, loop
 
 # ---------------------------------------------------------------- S1 style
 def s1_style(ctx, spec: DemoSpec) -> str:
-    resp = ctx.client("orchestrator").chat(
+    resp = chat_with_room(
+        ctx.client("orchestrator"),
         [
             {"role": "system", "content": P.system_prompt(spec.timeline.bpm)},
             {
@@ -300,13 +301,13 @@ async def s2_draft(ctx, spec: DemoSpec, style: str) -> dict[str, str]:
         for _attempt in range(2):
             content = ""
             try:
-                resp = await ctx.client("orchestrator").achat(msgs, step=f"draft:{scene.id}")
+                resp = await achat_with_room(ctx.client("orchestrator"), msgs, step=f"draft:{scene.id}")
                 content = resp.content
                 env = parse_envelope(content)
                 meta = ShaderSubmission.model_validate(env.json())
                 src = env.glsl()
                 break
-            except LLMTruncated as e:
+            except LLMTruncated as e:  # troncata anche col doppio dei token
                 last_err, content = e, e.response.content
             except (EnvelopeError, ValidationError) as e:
                 last_err = e
@@ -361,7 +362,8 @@ def run_oracle_for(ctx, scene_id: str, version: int, requests) -> str:
 # ---------------------------------------------------------------- S4 compile + fixer
 def _run_fixer(ctx, spec: DemoSpec, scene_id: str, target: str, src: str, errors: str) -> str | None:
     fix_user = P.render("fixer.md.j2", src=src, errors=errors, target=target)
-    resp = ctx.client("fixer").chat(
+    resp = chat_with_room(
+        ctx.client("fixer"),
         [
             {"role": "system", "content": P.system_prompt(spec.timeline.bpm)},
             {"role": "user", "content": fix_user},
@@ -664,7 +666,7 @@ def s7_revise(ctx, harness: Harness, spec: DemoSpec, scene: SceneBrief, version:
         {"role": "system", "content": P.system_prompt(spec.timeline.bpm)},
         {"role": "user", "content": user},
     ]
-    resp = ctx.client("orchestrator").chat(msgs, step=f"revise:{scene.id}")
+    resp = chat_with_room(ctx.client("orchestrator"), msgs, step=f"revise:{scene.id}")
     env = parse_envelope(resp.content)
     new_version = next_version(sdir)
     consumed.add(new_version)

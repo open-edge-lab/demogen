@@ -19,7 +19,7 @@ from openai import APIStatusError
 from pydantic import BaseModel
 
 from .capabilities import Capabilities
-from .client import LLMClient, LLMTruncated
+from .client import LLMClient, LLMTruncated, grown_max_tokens
 from .envelope import parse_envelope
 
 T = TypeVar("T", bound=BaseModel)
@@ -109,15 +109,18 @@ def chat_structured(
     levels: list[dict | None] = [_schema_rf(schema)] if use_schema else []
     levels += [{"type": "json_object"}, None]
     last_err: Exception | None = None
+    max_tokens: int | None = None  # None = quello del ruolo; raddoppia dopo un troncamento
     for level in levels:
         msgs = list(messages)
         for repair in range(max_repairs + 1):
             try:
-                resp = client.chat(msgs, step=step, response_format=level)
+                kw = {"max_tokens": max_tokens} if max_tokens else {}
+                resp = client.chat(msgs, step=step, response_format=level, **kw)
                 text = resp.content
             except LLMTruncated as e:
                 text = e.response.content
                 last_err = e
+                max_tokens = grown_max_tokens(client, max_tokens)  # i modelli con reasoning ne consumano molti
                 err_msg = "la risposta è stata troncata: restituisci un output più compatto"
             except APIStatusError as e:
                 if level is not None and e.status_code in _LEVEL_UNSUPPORTED:

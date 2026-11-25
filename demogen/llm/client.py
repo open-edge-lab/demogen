@@ -78,6 +78,34 @@ class LLMTruncated(Exception):
         self.response = response
 
 
+MAX_TOKENS_CAP = 65536
+
+
+def grown_max_tokens(client, max_tokens: int | None) -> int:
+    """Il doppio dei token della chiamata (tetto MAX_TOKENS_CAP): i modelli con reasoning
+    possono consumare quasi tutto il budget nel ragionamento e troncare la risposta."""
+    base = max_tokens or getattr(getattr(client, "role_cfg", None), "max_tokens", 4096)
+    return min(MAX_TOKENS_CAP, int(base) * 2)
+
+
+def chat_with_room(client, messages: list[dict], *, step: str = "", **kw) -> LLMResponse:
+    """chat(); se la risposta è troncata (finish_reason=length) riprova UNA volta col doppio dei token."""
+    try:
+        return client.chat(messages, step=step, **kw)
+    except LLMTruncated:
+        kw["max_tokens"] = grown_max_tokens(client, kw.get("max_tokens"))
+        return client.chat(messages, step=step + ":retry", **kw)
+
+
+async def achat_with_room(client, messages: list[dict], *, step: str = "", **kw) -> LLMResponse:
+    """Come chat_with_room, async."""
+    try:
+        return await client.achat(messages, step=step, **kw)
+    except LLMTruncated:
+        kw["max_tokens"] = grown_max_tokens(client, kw.get("max_tokens"))
+        return await client.achat(messages, step=step + ":retry", **kw)
+
+
 def _backoff(attempt: int) -> float:
     """Attesa prima del retry `attempt`: esponenziale (max 30 s) con jitter."""
     return min(2**attempt, 30) * (0.5 + random.random())

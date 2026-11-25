@@ -30,7 +30,9 @@ roles:
     vision: auto                         # auto | true | false
     json_schema: auto                    # auto | true | false
     timeout_s: 600
-    extra_body: {}                       # pass-through (es. parametri di reasoning)
+    extra_body: {}                       # pass-through, es. { reasoning: { effort: medium } } per i modelli
+                                         # con reasoning: il ragionamento consuma max_tokens (se la risposta
+                                         # viene troncata, demogen ritenta una volta col doppio dei token)
   critic:
     provider: openrouter
     model: "<id-modello-vision>"

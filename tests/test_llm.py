@@ -247,6 +247,35 @@ def test_finish_reason_length_solleva_dopo_log_e_addebito(tmp_path: Path) -> Non
         assert len(list(tmp_path.glob("*.json"))) == 1
 
 
+def _truncated(content: str = "") -> dict:
+    r = chat_response(content, completion_tokens=4096)
+    r["choices"][0]["finish_reason"] = "length"
+    return r
+
+
+def test_chat_with_room_ritenta_col_doppio_dei_token(tmp_path: Path) -> None:
+    from demogen.llm.client import chat_with_room
+
+    with FakeOpenAI([(200, _truncated()), (200, chat_response("ok"))]) as fake:
+        cfg = make_config(fake.url)
+        c = LLMClient(cfg, "orchestrator", log_dir=tmp_path, max_retries=0)
+        r = chat_with_room(c, [{"role": "user", "content": "hi"}], step="style")
+        assert r.content == "ok"
+        assert [q["max_tokens"] for q in fake.requests] == [4096, 8192]
+    # entrambe le chiamate pagate e loggate
+    assert len(list(tmp_path.glob("*.json"))) == 2
+
+
+def test_structured_troncato_ripara_col_doppio_dei_token(tmp_path: Path) -> None:
+    with FakeOpenAI([(200, _truncated('{"scene_id": ')), (200, chat_response('{"scene_id": "s4"}'))]) as fake:
+        cfg = make_config(fake.url)
+        c = LLMClient(cfg, "orchestrator", log_dir=tmp_path, max_retries=0)
+        caps = Capabilities(vision=False, json_schema=True, source="test")
+        out = chat_structured(c, [{"role": "user", "content": "x"}], SceneMeta, caps=caps)
+        assert out.scene_id == "s4"
+        assert [q["max_tokens"] for q in fake.requests] == [4096, 8192]
+
+
 def test_costo_con_id_del_modello_configurato(tmp_path: Path) -> None:
     # il server risponde con un id diverso (alias/versione): il prezzo è quello del modello configurato
     with FakeOpenAI([(200, chat_response("x", model="vendor/fake-1-2026-01"))]) as fake:
