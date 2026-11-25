@@ -348,7 +348,7 @@ def inspect(
     from .critic.gates import run_gates
     from .critic.metrics_perf import perf_profile
     from .critic.metrics_video import video_metrics
-    from .critic.sheets import burst_strip, contact_sheet, diff_heatmap, perf_chart
+    from .critic.sheets import burst_sheet, contact_sheet, diff_heatmap, perf_chart
 
     if file.suffix == ".demo":
         payload = _json.loads(file.read_text(encoding="utf-8"))
@@ -374,7 +374,18 @@ def inspect(
         stats = h.scene_stats(times, width, height)
         with perf_lane():
             prof = h.profile(times[:8], width, height, repeats=3)
-        cells = h.cell_sequence(0.0, min(duration, 10.0), 10, 160, 90)
+        sf = cfg_obj.safety
+        # flash WCAG su TUTTA la durata a >= 30 fps (a 10 fps uno strobo veloce andava in aliasing)
+        cells = h.cell_sequence(0.0, duration, sf.flash_fps, 128, 72, grid=sf.flash_grid)
+        pv = cfg_obj.preview
+        span = (pv.burst_len - 1) / pv.fps
+        bursts_png = [
+            h.capture([round(max(0.0, min(duration - span, duration * (b + 0.5) / pv.bursts - span / 2))
+                             + k / pv.fps, 5) for k in range(pv.burst_len)], width, height)
+            for b in range(pv.bursts)
+        ]
+        loop = bool(payload["meta"].get("loop"))
+        seam_png = h.capture([max(0.0, duration - 1.0 / pv.fps), 0.0], width, height) if loop else None
 
         # Fase 2: metriche audio se il payload ha `audio`
         audio_m = None
@@ -388,8 +399,12 @@ def inspect(
             audio_x = np.concatenate([np.asarray(b, dtype=np.float64) for b in raw])
             audio_m = _audio_metrics(audio_x, sr, float(payload["meta"]["bpm"]), channels=2)
 
-    frames_np = [np.asarray(Image.open(io.BytesIO(p)).convert("RGB")) for p in pngs]
-    vm = video_metrics(frames_np, stats, loop=bool(payload["meta"].get("loop")))
+    def _np(p: bytes) -> np.ndarray:
+        return np.asarray(Image.open(io.BytesIO(p)).convert("RGB"))
+
+    frames_np = [_np(p) for p in pngs]
+    vm = video_metrics(frames_np, stats, loop=loop, bursts=[[_np(p) for p in b] for b in bursts_png],
+                       seam=(_np(seam_png[0]), _np(seam_png[1])) if seam_png else None)
     pf = perf_profile(
         {float(k): v for k, v in prof["samples"].items()},
         profile=str(payload.get("render", {}).get("profile", "modern")),
@@ -399,8 +414,8 @@ def inspect(
         target_fps=cfg_obj.realtime.target_fps,
     )
     fl = analyze_flash(
-        cells, fps=10, flash_max_per_s=cfg_obj.safety.flash_max_per_s,
-        red_flash=cfg_obj.safety.red_flash,
+        cells, fps=sf.flash_fps, flash_max_per_s=sf.flash_max_per_s,
+        red_flash=sf.red_flash, area_frac=sf.flash_area_frac,
     )
     import gzip as _gzip
 
@@ -422,14 +437,17 @@ def inspect(
     rdir.mkdir(parents=True, exist_ok=True)
     imgs = [Image.open(io.BytesIO(p)).convert("RGB") for p in pngs]
     contact_sheet(imgs, times, rdir / "contact.png")
-    burst_strip(imgs[:6], rdir / "burst.png")
-    diff_heatmap(frames_np, rdir / "diff.png")
+    rows = [[Image.open(io.BytesIO(p)).convert("RGB") for p in b] for b in bursts_png]
+    burst_sheet(rows, rdir / "burst.png")
+    diff_heatmap([np.asarray(im) for im in rows[0]], rdir / "diff.png")
     perf_chart({float(k): v for k, v in prof["samples"].items()},
                cfg_obj.realtime.profiles["modern"]["p95"], rdir / "perf.png")
     if audio_m is not None and audio_x is not None:
         from .critic.metrics_audio import spectrogram_png
 
-        spectrogram_png(audio_x, 44100, float(payload["meta"]["bpm"]), rdir / "spectrogram.png")
+        # audio_x è stereo interleaved: (N, 2) → spectrogram_png fa la media dei canali
+        stereo = audio_x[: len(audio_x) // 2 * 2].reshape(-1, 2)
+        spectrogram_png(stereo, 44100, float(payload["meta"]["bpm"]), rdir / "spectrogram.png")
     (rdir / "metrics.json").write_text(_json.dumps(metrics, indent=1, default=str), encoding="utf-8")
     (rdir / "issues.json").write_text(
         _json.dumps([i.model_dump() for i in issues], indent=1), encoding="utf-8"
@@ -437,7 +455,7 @@ def inspect(
 
     print(f"inspect {file.name}  gpu={info['renderer']}")
     print(f"  video: luma_mean={vm['luma_mean']:.3f} black={vm['black_ratio']:.3f} "
-          f"nan={vm['nan_ratio']:.4f} flicker_peaks={vm['flicker_peaks']}")
+          f"nan={vm['nan_ratio']:.4f} flicker={vm['flicker_score']:.4f}")
     print(f"  perf:  p95={pf.p95_ms:.2f} ms  mean={pf.mean_ms:.2f} ms  "
           f"load={pf.gpu_load_est:.0%}  ({pf.method})")
     print(f"  flash: passed={fl.passed} max/s={fl.max_flashes_per_s:.1f} red={fl.red_flash_events}")

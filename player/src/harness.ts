@@ -58,6 +58,29 @@ for (let i = 0; i < 256; i++) {
   SRGB_TO_LINEAR[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }
 
+/** Come cellSequence ma in un unico blob Float32 base64 (N×celle×3): migliaia di piccoli
+ *  array annidati costano molto più del render nella serializzazione verso Playwright. */
+function cellSequenceB64(opts: {
+  t0: number;
+  t1: number;
+  fps: number;
+  width: number;
+  height: number;
+  grid?: number;
+}): { frames: number; cells: number; data: string } {
+  const seq = cellSequence(opts);
+  const cells = seq.length ? seq[0].length : 0;
+  const f32 = new Float32Array(seq.length * cells * 3);
+  let k = 0;
+  for (const frame of seq) for (const c of frame) { f32[k++] = c[0]; f32[k++] = c[1]; f32[k++] = c[2]; }
+  const bytes = new Uint8Array(f32.buffer);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)));
+  }
+  return { frames: seq.length, cells, data: btoa(bin) };
+}
+
 /** Per ogni frame (a t0 + i/fps): RGB LINEARE medio per cella di una griglia grid×grid (flash WCAG). */
 function cellSequence(opts: {
   t0: number;
@@ -123,12 +146,15 @@ function profile(opts: {
   height: number;
   repeats?: number;
   useTimerQuery?: boolean;
+  /** true: misura alla qualità minima (pavimento della scala adattiva). */
+  floor?: boolean;
 }): { method: string; samples: Record<number, number> } {
   if (!current) throw new Error("load() prima");
   const { player } = current;
   const gl = player.gl;
   setSize(opts.width, opts.height);
   const repeats = opts.repeats ?? 3;
+  const fq = opts.floor ? player.floorQuality() : undefined;
   const ext = opts.useTimerQuery ? gl.getExtension("EXT_disjoint_timer_query_webgl2") : null;
   const samples: Record<number, number> = {};
   for (const t of opts.times) {
@@ -138,7 +164,7 @@ function profile(opts: {
       if (ext) {
         const q = gl.createQuery()!;
         gl.beginQuery(ext.TIME_ELAPSED_EXT, q);
-        player.renderFrameAt(t);
+        player.renderFrameAt(t, fq);
         gl.endQuery(ext.TIME_ELAPSED_EXT);
         // poll limitato: se il risultato non arriva, si butta la query
         let avail = false;
@@ -155,13 +181,13 @@ function profile(opts: {
         if (ms === 0) {
           // fallback fence
           const t0 = performance.now();
-          player.renderFrameAt(t);
+          player.renderFrameAt(t, fq);
           gl.finish();
           ms = performance.now() - t0;
         }
       } else {
         const t0 = performance.now();
-        player.renderFrameAt(t);
+        player.renderFrameAt(t, fq);
         gl.finish();
         ms = performance.now() - t0;
       }
@@ -198,5 +224,5 @@ function renderAudio(opts: { t0: number; blocks: number }): number[][] {
   return out;
 }
 
-const api = { load, capture, cellSequence, stats, profile, info, state, renderAudio };
+const api = { load, capture, cellSequence, cellSequenceB64, stats, profile, info, state, renderAudio };
 (window as unknown as { __demogen: typeof api }).__demogen = api;

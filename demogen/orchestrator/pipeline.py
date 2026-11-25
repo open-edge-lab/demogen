@@ -224,8 +224,10 @@ class Pipeline:
             stats = h.scene_stats(times, 320, 180)
             prof = h.profile(times, 320, 180, repeats=2)
             fl = steps.probe_flash(self, h, dur)
+            bursts = steps.capture_bursts(self, h, dur)
+            seam = steps.capture_seam(self, h, dur) if spec.loop else None
         frames = [np.asarray(Image.open(io.BytesIO(p)).convert("RGB")) for p in pngs]
-        vm = video_metrics(frames, stats, loop=spec.loop)
+        vm = video_metrics(frames, stats, loop=spec.loop, bursts=steps._np_bursts(bursts), seam=seam)
         pf = perf_profile(
             {float(k): v for k, v in prof["samples"].items()},
             profile=spec.profile,

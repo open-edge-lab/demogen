@@ -25,10 +25,10 @@ from pydantic import ValidationError
 from ..browser.harness import Harness
 from ..browser.perf_lane import perf_lane
 from ..critic.flash import analyze_flash
-from ..critic.gates import run_gates
+from ..critic.gates import is_software_renderer, run_gates
 from ..critic.metrics_perf import perf_profile
 from ..critic.metrics_video import video_metrics
-from ..critic.sheets import burst_strip, contact_sheet, diff_heatmap
+from ..critic.sheets import burst_sheet, contact_sheet, diff_heatmap
 from ..glsl.treeshake import load_library, treeshake
 from ..llm.budget import BudgetExceeded
 from ..llm.client import LLMTruncated
@@ -423,6 +423,60 @@ def probe_flash(ctx, harness: Harness, dur: float):
                          red_flash=sf.red_flash, area_frac=sf.flash_area_frac)
 
 
+def probe_perf(ctx, harness: Harness, times: list[float], profile: str, renderer: str):
+    """Profilo perf + pavimento (qualità minima).
+
+    Su GPU hardware si misura alla risoluzione del budget del profilo (i ms a 480×270
+    non dicono nulla del 1080p); su renderer software (SwiftShader) alla risoluzione di
+    preview: il gate li tratta comunque come informativi."""
+    if is_software_renderer(renderer):
+        rw, rh = ctx.cfg.preview.width, ctx.cfg.preview.height
+    else:
+        budget = ctx.cfg.realtime.profiles.get(profile, ctx.cfg.realtime.profiles["modern"])
+        rw, rh = budget.get("res", [ctx.cfg.preview.width, ctx.cfg.preview.height])
+    with perf_lane():
+        prof = harness.profile(times, rw, rh, repeats=3)
+        floor = harness.profile(times, rw, rh, repeats=2, floor=True)
+    return prof, floor, (rw, rh)
+
+
+def capture_bursts(ctx, harness: Harness, dur: float) -> list[list[bytes]]:
+    """`preview.bursts` raffiche di `preview.burst_len` frame CONSECUTIVI a `preview.fps`."""
+    pv = ctx.cfg.preview
+    out = []
+    span = (pv.burst_len - 1) / pv.fps
+    for b in range(pv.bursts):
+        t0 = max(0.0, min(dur - span, dur * (b + 0.5) / pv.bursts - span / 2))
+        out.append(harness.capture([round(t0 + k / pv.fps, 5) for k in range(pv.burst_len)],
+                                   pv.width, pv.height))
+    return out
+
+
+def capture_seam(ctx, harness: Harness, dur: float) -> tuple[np.ndarray, np.ndarray]:
+    """Frame a cavallo della cucitura del loop: t = dur − 1/fps e t = 0."""
+    pv = ctx.cfg.preview
+    a, b = harness.capture([max(0.0, dur - 1.0 / pv.fps), 0.0], pv.width, pv.height)
+    return _np_frame(a), _np_frame(b)
+
+
+def _np_frame(png: bytes) -> np.ndarray:
+    return np.asarray(Image.open(io.BytesIO(png)).convert("RGB"))
+
+
+def _np_bursts(bursts: list[list[bytes]]) -> list[list[np.ndarray]]:
+    return [[_np_frame(p) for p in burst] for burst in bursts]
+
+
+def write_burst_sheets(bursts: list[list[bytes]], out_dir: Path) -> None:
+    """burst.png (raffiche di frame consecutivi, una riga per raffica) e diff.png (prima raffica)."""
+    rows = [[Image.open(io.BytesIO(p)).convert("RGB") for p in burst] for burst in bursts if burst]
+    if not rows:
+        return
+    burst_sheet(rows, out_dir / "burst.png")
+    if len(rows[0]) > 1:
+        diff_heatmap([np.asarray(im) for im in rows[0]], out_dir / "diff.png")
+
+
 def s5_probe(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str, version: int) -> dict:
     """Cattura keyframe + stats + perf + flash per la scena; gate; salva vN.probe/.
 
@@ -450,24 +504,27 @@ def s5_probe(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str, ver
              for i in range(ctx.cfg.preview.keyframes)]
     pngs = harness.capture(times, pw, ph)
     stats = harness.scene_stats(times, pw, ph)
-    with perf_lane():
-        prof = harness.profile(times[:6], pw, ph, repeats=3)
+    info = harness.info()
+    prof_name = scene_profile(spec, scene_id)
+    prof, floor, (rw, rh) = probe_perf(ctx, harness, times[:6], prof_name, str(info["renderer"]))
     fl = probe_flash(ctx, harness, dur)
+    bursts = capture_bursts(ctx, harness, dur)
+    seam = capture_seam(ctx, harness, dur) if spec.loop and len(spec.timeline.scenes) == 1 else None
 
     for i, p in enumerate(pngs):
         (pdir / f"key_{i:02d}_t{times[i]}s.png").write_bytes(p)
 
     frames = [np.asarray(Image.open(io.BytesIO(p)).convert("RGB")) for p in pngs]
-    vm = video_metrics(frames, stats, loop=spec.loop)
-    info = harness.info()
+    vm = video_metrics(frames, stats, loop=spec.loop, bursts=_np_bursts(bursts), seam=seam)
     pf = perf_profile(
         {float(k): v for k, v in prof["samples"].items()},
         scene_id=scene_id,
-        profile=scene_profile(spec, scene_id),
-        resolution=(pw, ph),
+        profile=prof_name,
+        resolution=(rw, rh),
         method=str(prof["method"]),
         gpu=str(info["renderer"]),
         target_fps=ctx.cfg.realtime.target_fps,
+        floor_samples={float(k): v for k, v in floor["samples"].items()},
     )
     raw = json.dumps(payload).encode()
     metrics = {
@@ -483,8 +540,7 @@ def s5_probe(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str, ver
     )
     imgs = [Image.open(io.BytesIO(p)).convert("RGB") for p in pngs]
     contact_sheet(imgs, times, pdir / "contact.png")
-    burst_strip(imgs[:6], pdir / "burst.png")
-    diff_heatmap(frames, pdir / "diff.png")
+    write_burst_sheets(bursts, pdir)
     # issues anche a livello di versione (per selection); metrics.json per ultimo = probe completo
     ctx.project.write(issues_rel, json.dumps([i.model_dump() for i in issues], indent=1))
     (pdir / "metrics.json").write_text(json.dumps(metrics, indent=1, default=str), encoding="utf-8")

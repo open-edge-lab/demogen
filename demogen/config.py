@@ -111,6 +111,10 @@ class PreviewConfig(BaseModel):
     bursts: int = 3
     burst_len: int = 6
     fps: int = 60
+    # oscillazione media (luma) tra frame consecutivi oltre la quale si segnala flicker
+    flicker_max: float = 0.02
+    # cucitura del loop: salto massimo rispetto alla diff tipica tra frame consecutivi
+    loop_seam_max_ratio: float = 4.0
 
 
 class Config(BaseModel):

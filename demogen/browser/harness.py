@@ -71,21 +71,28 @@ class Harness:
         return [base64.b64decode(u.split(",", 1)[1]) for u in urls]
 
     def profile(
-        self, times: list[float], width: int, height: int, repeats: int = 3
+        self, times: list[float], width: int, height: int, repeats: int = 3, floor: bool = False
     ) -> dict[str, Any]:
+        """ms per tempo (mediana su repeats). `floor`: alla qualità minima (pavimento della scala)."""
         return self.page.evaluate(
             "(o) => window.__demogen.profile(o)",
-            {"times": times, "width": width, "height": height, "repeats": repeats},
+            {"times": times, "width": width, "height": height, "repeats": repeats, "floor": floor},
         )
 
     def cell_sequence(
         self, t0: float, t1: float, fps: float, width: int, height: int, grid: int = 16
     ) -> list[list[list[float]]]:
-        """Frame a t0 + i/fps: grid×grid celle × [r,g,b] LINEARI in [0,1] — per l'analisi flash."""
-        return self.page.evaluate(
-            "(o) => window.__demogen.cellSequence(o)",
+        """Frame a t0 + i/fps: grid×grid celle × [r,g,b] LINEARI in [0,1] — per l'analisi flash.
+
+        Ritorna un ndarray (N, celle, 3): i dati viaggiano come un unico blob Float32."""
+        import numpy as np
+
+        r = self.page.evaluate(
+            "(o) => window.__demogen.cellSequenceB64(o)",
             {"t0": t0, "t1": t1, "fps": fps, "width": width, "height": height, "grid": grid},
         )
+        arr = np.frombuffer(base64.b64decode(r["data"]), dtype="<f4").astype(np.float64)
+        return arr.reshape(int(r["frames"]), int(r["cells"]), 3)
 
     def scene_stats(
         self, times: list[float], width: int, height: int

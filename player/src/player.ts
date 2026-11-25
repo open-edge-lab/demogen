@@ -36,6 +36,12 @@ export class Player {
   private lastQuality: QualityState | null = null;
   private internalW = 0;
   private internalH = 0;
+  private minScale: number;
+
+  /** Qualità minima della scala adattiva (pavimento perf: scala minima, uQuality 0, niente bloom). */
+  floorQuality(): QualityState {
+    return { scale: this.minScale, uQuality: 0, bloom: false };
+  }
 
   constructor(
     readonly canvas: HTMLCanvasElement,
@@ -54,9 +60,10 @@ export class Player {
     this.payload = parsePayload(payload);
     this.text = textToUniform(this.payload.text);
     const q = this.payload.quality ?? {};
+    this.minScale = q.min_scale ?? DEFAULT_LIMITS.minScale;
     this.quality = new QualityController({
       targetFps: q.target_fps ?? DEFAULT_LIMITS.targetFps,
-      minScale: q.min_scale ?? DEFAULT_LIMITS.minScale,
+      minScale: this.minScale,
       bloom: this.payload.post?.bloom !== undefined,
     });
     canvas.addEventListener("webglcontextlost", (e) => {

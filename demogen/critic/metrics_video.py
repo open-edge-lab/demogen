@@ -28,13 +28,43 @@ def histogram_entropy(luma: np.ndarray, bins: int = 256) -> float:
     return float(-(p * np.log2(p)).sum())
 
 
+def flicker_score(bursts: list[list[np.ndarray]]) -> tuple[float, float]:
+    """Oscillazione temporale su frame REALMENTE consecutivi (burst a fps di preview).
+
+    Per pixel e per tripletta di frame consecutivi: se le due differenze hanno segno
+    opposto (su-giù o giù-su a frame rate) conta min(|d1|, |d2|), altrimenti 0. Il moto
+    regolare (differenze concordi) dà ~0; aliasing temporale, rumore instabile o strobo
+    a frame rate danno valori alti. Ritorna (score massimo sui burst, diff media tra
+    frame consecutivi), entrambi in unità di luma [0,1].
+    """
+    scores, diffs = [], []
+    for burst in bursts:
+        if len(burst) < 3:
+            continue
+        L = np.stack([_luma(f) for f in burst])  # (T,H,W)
+        d = np.diff(L, axis=0)
+        diffs.append(float(np.abs(d).mean()))
+        d1, d2 = d[:-1], d[1:]
+        osc = np.where(d1 * d2 < 0, np.minimum(np.abs(d1), np.abs(d2)), 0.0)
+        scores.append(float(osc.mean()))
+    return (max(scores) if scores else 0.0), (float(np.mean(diffs)) if diffs else 0.0)
+
+
 def video_metrics(
     frames: list[np.ndarray],
     float_stats: list[dict] | None = None,
     loop: bool = False,
+    bursts: list[list[np.ndarray]] | None = None,
+    seam: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> dict:
     """Metriche §12.1: NaN/Inf (da float), nero/bianco, luma, entropia, colorfulness,
-    temporali (diff tra frame consecutivi, picchi z>4), loop_seam."""
+    temporali e loop_seam.
+
+    - `bursts`: frame consecutivi a fps di preview → flicker_score (i keyframe sono
+      troppo distanti nel tempo per dire qualcosa sul flicker);
+    - `seam`: (frame a t=dur−1/fps, frame a t=0) → loop_seam, la diff alla cucitura del
+      loop, e loop_seam_ratio, la stessa diviso la diff tipica tra frame consecutivi.
+    """
     if not frames:
         raise ValueError("nessun frame")
     stack = np.stack([_luma(f) for f in frames])  # (N,H,W) in [0,1]
@@ -50,13 +80,18 @@ def video_metrics(
         nan_ratio = float(np.mean([s.get("nan_ratio", 0.0) for s in float_stats]))
         inf_ratio = float(np.mean([s.get("inf_ratio", 0.0) for s in float_stats]))
 
+    # diff tra keyframe (lontani nel tempo): misura di "quanto cambia" la scena, non di flicker
     diffs = np.abs(np.diff(stack, axis=0)).mean(axis=(1, 2)) if stack.shape[0] > 1 else np.array([0.0])
-    z = (diffs - diffs.mean()) / (diffs.std() + 1e-12)
-    flicker_peaks = int((z > 4).sum())
 
-    loop_seam = None
-    if loop and stack.shape[0] > 1:
-        loop_seam = float(np.abs(stack[0] - stack[-1]).mean())
+    flicker = consecutive_diff = None
+    if bursts:
+        flicker, consecutive_diff = flicker_score(bursts)
+
+    loop_seam = loop_seam_ratio = None
+    if loop and seam is not None:
+        loop_seam = float(np.abs(_luma(seam[0]) - _luma(seam[1])).mean())
+        if consecutive_diff:
+            loop_seam_ratio = loop_seam / max(consecutive_diff, 1e-6)
 
     return {
         "frames": int(stack.shape[0]),
@@ -69,6 +104,8 @@ def video_metrics(
         "histogram_entropy": ent,
         "colorfulness": col,
         "temporal_diff_mean": float(diffs.mean()),
-        "flicker_peaks": flicker_peaks,
+        "consecutive_diff_mean": consecutive_diff,
+        "flicker_score": flicker,
         "loop_seam": loop_seam,
+        "loop_seam_ratio": loop_seam_ratio,
     }

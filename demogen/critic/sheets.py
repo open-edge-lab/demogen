@@ -41,6 +41,19 @@ def burst_strip(frames: list[Image.Image], out_path: Path, label: str = "burst")
     return out_path
 
 
+def burst_sheet(bursts: list[list[Image.Image]], out_path: Path) -> Path:
+    """Più raffiche di frame consecutivi, una riga per raffica (moto e flicker a frame rate)."""
+    tw, th = bursts[0][0].width, bursts[0][0].height
+    cols = max(len(b) for b in bursts)
+    sheet = Image.new("RGB", (cols * tw, len(bursts) * (th + 18)), (10, 10, 10))
+    for r, burst in enumerate(bursts):
+        for i, f in enumerate(burst):
+            sheet.paste(_label(f.convert("RGB").copy(), f"raffica {r} #{i}"), (i * tw, r * (th + 18)))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(out_path)
+    return out_path
+
+
 def diff_heatmap(frames: list[np.ndarray], out_path: Path) -> Path:
     """|frame[i+1]-frame[i]| come heatmap per frame (flicker/aliasing temporale)."""
     n = len(frames) - 1

@@ -173,10 +173,57 @@ def test_gate_compilazione_lenta() -> None:
     assert any(i.severity == "major" and "compilazione" in i.description for i in issues)
 
 
-def test_video_metrics_loop_seam() -> None:
+def test_video_metrics_loop_seam_sui_frame_della_cucitura() -> None:
     a = np.full((8, 8, 3), 200, dtype=np.uint8)
     b = np.zeros((8, 8, 3), dtype=np.uint8)
-    m = video_metrics([a, b], loop=True)
+    smooth = [[np.full((8, 8, 3), 100 + i, dtype=np.uint8) for i in range(6)]]  # diff tipica ~1/255
+    m = video_metrics([a, a], loop=True, bursts=smooth, seam=(a, b))  # fine (a) → inizio (b)
     assert m["loop_seam"] is not None and m["loop_seam"] > 0.5
-    m2 = video_metrics([a, b], loop=False)
-    assert m2["loop_seam"] is None
+    assert m["loop_seam_ratio"] > CFG.preview.loop_seam_max_ratio
+    issues = run_gates({"video": m}, CFG)
+    assert any(i.severity == "minor" and "loop" in i.description for i in issues)
+    # cucitura invisibile: stessi frame ai due lati
+    assert video_metrics([a, a], loop=True, bursts=smooth, seam=(a, a))["loop_seam"] == 0.0
+    assert video_metrics([a, b], loop=False, seam=(a, b))["loop_seam"] is None
+
+
+def test_flicker_su_frame_consecutivi() -> None:
+    rng = np.random.default_rng(0)
+    # rumore che cambia a ogni frame: oscillazione forte → segnalato
+    noisy = [[rng.integers(0, 255, (16, 16, 3), dtype=np.uint8) for _ in range(6)]]
+    m = video_metrics(noisy[0], bursts=noisy)
+    assert m["flicker_score"] > CFG.preview.flicker_max
+    assert any("flicker" in i.description for i in run_gates({"video": m}, CFG))
+    # gradiente che scorre in modo regolare: differenze concordi → nessun flicker
+    x = np.arange(16, dtype=np.float64)
+    moving = [[np.repeat(np.clip((x[None, :] * 12 + 6 * k), 0, 255).astype(np.uint8)[..., None], 3, axis=2)
+               .repeat(16, axis=0)[:16] for k in range(6)]]
+    m2 = video_metrics(moving[0], bursts=moving)
+    assert m2["flicker_score"] < 1e-6
+    assert not any("flicker" in i.description for i in run_gates({"video": m2}, CFG))
+    # senza burst il flicker non è misurabile (i keyframe sono troppo distanti)
+    assert video_metrics(moving[0])["flicker_score"] is None
+
+
+def test_onset_solo_colpi_forti_e_mix_stereo() -> None:
+    from demogen.critic.metrics_audio import audio_metrics
+
+    sr, bpm, dur = 44100, 120.0, 4.0
+    n = int(sr * dur)
+    kick = np.zeros(n)
+    hat = np.zeros(n)
+    beat = 60.0 / bpm
+    for k in range(int(dur / beat)):
+        i0 = int(k * beat * sr)
+        kick[i0:i0 + 600] += np.hanning(600) * 0.9  # kick sul beat
+        j0 = int((k + 0.5) * beat * sr)  # hi-hat in levare, debole
+        hat[j0:j0 + 200] += np.hanning(200) * 0.15 * np.sign(np.sin(np.arange(200) * 2.3))
+    mono = audio_metrics(kick + hat, sr, bpm)
+    assert mono["onset_vs_beat"]["mean_abs_err_ms"] < 5.0, mono["onset_vs_beat"]
+    # stereo interleaved con il kick SOLO sul canale destro: il mix L+R lo vede
+    stereo = np.empty(2 * n)
+    stereo[0::2] = hat
+    stereo[1::2] = kick
+    st = audio_metrics(stereo, sr, bpm, channels=2)
+    assert st["onset_vs_beat"]["n_strong"] >= 6
+    assert st["onset_vs_beat"]["mean_abs_err_ms"] < 5.0, st["onset_vs_beat"]

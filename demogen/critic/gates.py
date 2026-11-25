@@ -49,9 +49,15 @@ def run_gates(metrics: dict[str, Any], cfg: Config | None = None) -> list[Issue]
     if vm.get("black_ratio", 0.0) >= 0.9:
         add("major", f"frame quasi nero (black_ratio={vm['black_ratio']:.2f})",
             "controlla condizioni di luce/raymarch: niente hit → colore di sfondo")
-    if vm.get("flicker_peaks", 0) > 0:
-        add("minor", f"{vm['flicker_peaks']} picchi temporali (z>4): possibile flicker",
-            "riduci aliasing temporale (aa.glsl) o sorgenti di rumore instabili")
+    fs = vm.get("flicker_score")
+    if fs is not None and fs > cfg.preview.flicker_max:
+        add("minor", f"flicker temporale: oscillazione {fs:.3f} > {cfg.preview.flicker_max} "
+            "tra frame consecutivi",
+            "riduci aliasing temporale (aa.glsl), rumore che cambia a ogni frame, dettagli sub-pixel")
+    lsr = vm.get("loop_seam_ratio")
+    if lsr is not None and lsr > cfg.preview.loop_seam_max_ratio:
+        add("minor", f"cucitura del loop visibile: salto {lsr:.1f}× la diff tipica tra frame",
+            "rendi la scena periodica sulla durata (tempo modulo durata, easing che torna allo stato iniziale)")
 
     # --- perf ---
     perf = metrics.get("perf")
