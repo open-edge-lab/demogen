@@ -79,12 +79,12 @@ class Harness:
         )
 
     def cell_sequence(
-        self, t0: float, t1: float, fps: int, width: int, height: int
+        self, t0: float, t1: float, fps: float, width: int, height: int, grid: int = 16
     ) -> list[list[list[float]]]:
-        """Per ogni frame: 64 celle (8x8) × [r,g,b] medi — per l'analisi flash."""
+        """Frame a t0 + i/fps: grid×grid celle × [r,g,b] LINEARI in [0,1] — per l'analisi flash."""
         return self.page.evaluate(
             "(o) => window.__demogen.cellSequence(o)",
-            {"t0": t0, "t1": t1, "fps": fps, "width": width, "height": height},
+            {"t0": t0, "t1": t1, "fps": fps, "width": width, "height": height, "grid": grid},
         )
 
     def scene_stats(

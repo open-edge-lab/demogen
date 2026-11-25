@@ -7,6 +7,28 @@ from typing import Any
 from ..config import Config
 from .models import Issue
 
+_SOFTWARE_MARKERS = ("swiftshader", "llvmpipe", "softpipe", "software")
+
+
+def is_software_renderer(name: str | None) -> bool:
+    """Come isSoftwareRenderer in player/src/gl.ts: rendering su CPU (ms non confrontabili coi budget GPU)."""
+    n = (name or "").lower()
+    return any(m in n for m in _SOFTWARE_MARKERS)
+
+
+def perf_scale(perf: dict, budget: dict) -> tuple[float, str]:
+    """Fattore per riportare i ms misurati alla risoluzione del budget (rapporto di pixel).
+
+    Il profilo retro renderizza sempre alla risoluzione interna fissa: niente scala."""
+    res, bres = perf.get("resolution"), budget.get("res")
+    if perf.get("profile") == "retro" or not res or not bres:
+        return 1.0, ""
+    px, bpx = res[0] * res[1], bres[0] * bres[1]
+    if px <= 0 or abs(bpx / px - 1.0) < 0.01:
+        return 1.0, ""
+    k = bpx / px
+    return k, f" (stimato ×{k:.1f} da {res[0]}×{res[1]} a {bres[0]}×{bres[1]})"
+
 
 def run_gates(metrics: dict[str, Any], cfg: Config | None = None) -> list[Issue]:
     """Valuta le metriche contro le soglie e ritorna le issue (ordinate per gravità)."""
@@ -36,32 +58,41 @@ def run_gates(metrics: dict[str, Any], cfg: Config | None = None) -> list[Issue]
     if perf:
         prof = perf.get("profile", "modern")
         budget = rt.profiles.get(prof, rt.profiles["modern"])
-        p95 = perf.get("p95_ms", 0.0)
-        mean = perf.get("mean_ms", 0.0)
+        k, est = perf_scale(perf, budget)
+        # su renderer software (SwiftShader) i ms non dicono nulla della GPU: solo informativi (piano §M0)
+        sw = is_software_renderer(perf.get("gpu") or metrics.get("gpu"))
+        sev_hi, sev_mid = ("info", "info") if sw else ("blocker", "major")
+        note = " [renderer software: solo informativo]" if sw else ""
+        p95 = perf.get("p95_ms", 0.0) * k
+        mean = perf.get("mean_ms", 0.0) * k
         if p95 > budget["p95"]:
             hot = ", ".join(f"t={h['t']}s ({h['ms']:.1f}ms)" for h in perf.get("hotspots", [])[:3])
-            add("blocker", f"perf p95 {p95:.2f} ms > budget {budget['p95']} ms [{prof}]",
+            add(sev_hi, f"perf p95 {p95:.2f} ms > budget {budget['p95']} ms [{prof}]{est}{note}",
                 f"hotspot: {hot}. Riduci MAX_STEPS (qSteps), ottave fbm, "
                 "soft shadow/AO sopra soglia uQuality, bounding volume",
                 at=perf.get("hotspots", [{}])[0].get("t") if perf.get("hotspots") else None)
         if mean > budget["mean"]:
-            add("major", f"carico medio {mean:.2f} ms > budget {budget['mean']} ms [{prof}] "
-                f"(GPU load stimato {perf.get('gpu_load_est', 0):.0%})",
+            add(sev_mid, f"carico medio {mean:.2f} ms > budget {budget['mean']} ms [{prof}]{est}{note} "
+                f"(GPU load stimato {perf.get('gpu_load_est', 0) * k:.0%})",
                 "riduci il costo per-pixel: meno passi, meno ottave, bloom off a bassa qualità")
         floor = perf.get("floor_p95_ms")
-        if floor is not None and floor > rt.floor_ratio * budget["p95"]:
-            add("major", f"pavimento p95 {floor:.2f} ms > floor_ratio×budget: la qualità adattiva non ha margine",
+        if floor is not None and floor * k > rt.floor_ratio * budget["p95"]:
+            add(sev_mid, f"pavimento p95 {floor * k:.2f} ms > floor_ratio×budget{est}{note}: "
+                "la qualità adattiva non ha margine",
                 "la scena è troppo pesante anche a qualità minima: semplifica la geometria")
 
     # --- flash ---
     flash = metrics.get("flash")
     if flash and not flash.get("passed", True):
-        if flash.get("red_flash_events", 0) > 0:
-            add("blocker", f"{flash['red_flash_events']} flash rossi saturi",
-                "niente transizioni verso rosso saturo; usa crossfade o beatFlash con uFlashLimit")
-        add("blocker", f"flash: {flash.get('max_flashes_per_s', 0):.1f}/s > {safety.flash_max_per_s}/s "
-            f"finestre {flash.get('windows', [])[:3]}",
-            "riduci strobo/flash a tutto schermo; usa beatFlash (rispetta uFlashLimit)")
+        lim = safety.flash_max_per_s
+        wins = flash.get("windows", [])[:3]
+        at = wins[0][0] if wins else None
+        if flash.get("max_red_flashes_per_s", 0) > lim:
+            add("blocker", f"flash rossi saturi: {flash['max_red_flashes_per_s']:.0f}/s > {lim}/s finestre {wins}",
+                "niente alternanze rapide verso rosso saturo; usa crossfade o beatFlash con uFlashLimit", at=at)
+        if flash.get("max_flashes_per_s", 0) > lim:
+            add("blocker", f"flash: {flash['max_flashes_per_s']:.0f}/s > {lim}/s (WCAG 2.3.1) finestre {wins}",
+                "riduci strobo/flash su aree ampie; usa beatFlash (rispetta uFlashLimit)", at=at)
 
     # --- avvio ---
     startup = metrics.get("startup")
@@ -92,6 +123,6 @@ def run_gates(metrics: dict[str, Any], cfg: Config | None = None) -> list[Issue]
             add("major", f"payload {gz} B gzip > {cfg.bundle.max_payload_gz_kb} KB",
                 "minify aggressivo, treeshake più stretto, meno scene")
 
-    order = {"blocker": 0, "major": 1, "minor": 2}
+    order = {"blocker": 0, "major": 1, "minor": 2, "info": 3}
     issues.sort(key=lambda i: order[i.severity])
     return issues

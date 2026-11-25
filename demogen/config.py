@@ -91,6 +91,11 @@ class AudioConfig(BaseModel):
 class SafetyConfig(BaseModel):
     flash_max_per_s: int = 3
     red_flash: bool = True
+    # campionamento del flash: >= 30 fps su tutta la durata (8 fps andava in aliasing con strobo a 8 Hz)
+    flash_fps: int = 30
+    # area WCAG: 25% di un campo visivo di 10° ≈ 341×256 px su 1024×768 ≈ 2.8% dello schermo
+    flash_area_frac: float = 0.028
+    flash_grid: int = 16  # griglia g×g di celle (16 → 256 celle, ~0.4% dello schermo ciascuna)
 
 
 class BundleLimits(BaseModel):

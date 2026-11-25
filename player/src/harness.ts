@@ -51,13 +51,21 @@ function capture(opts: { times: number[]; width: number; height: number }): stri
   return opts.times.map((t) => current!.player.captureDataURL(t));
 }
 
-/** Per ogni frame: media RGB per cella di una griglia 8×8 (analisi flash WCAG). */
+// sRGB 8 bit → lineare [0,1]: la media per cella va fatta in luce lineare (WCAG), non in sRGB
+const SRGB_TO_LINEAR = new Float64Array(256);
+for (let i = 0; i < 256; i++) {
+  const c = i / 255;
+  SRGB_TO_LINEAR[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+/** Per ogni frame (a t0 + i/fps): RGB LINEARE medio per cella di una griglia grid×grid (flash WCAG). */
 function cellSequence(opts: {
   t0: number;
   t1: number;
   fps: number;
   width: number;
   height: number;
+  grid?: number;
 }): number[][][] {
   if (!current) throw new Error("load() prima");
   const { player } = current;
@@ -65,28 +73,27 @@ function cellSequence(opts: {
   const w = opts.width;
   const h = opts.height;
   setSize(w, h);
-  const cells = 8;
+  const cells = Math.max(1, Math.floor(opts.grid ?? 16));
   const buf = new Uint8Array(w * h * 4);
   const out: number[][][] = [];
   const n = Math.max(1, Math.round((opts.t1 - opts.t0) * opts.fps));
   const cw = w / cells;
   const ch = h / cells;
   for (let i = 0; i < n; i++) {
-    const t = opts.t0 + (i / n) * (opts.t1 - opts.t0);
+    const t = opts.t0 + i / opts.fps;
     player.renderFrameAt(t);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
     const acc = new Float64Array(cells * cells * 3);
     const cnt = new Float64Array(cells * cells);
     for (let y = 0; y < h; y++) {
+      const cy = Math.min(cells - 1, Math.floor(y / ch));
       for (let x = 0; x < w; x++) {
         const idx = (y * w + x) * 4;
-        const cx = Math.min(cells - 1, Math.floor(x / cw));
-        const cy = Math.min(cells - 1, Math.floor(y / ch));
-        const c = cy * cells + cx;
-        acc[c * 3] += buf[idx];
-        acc[c * 3 + 1] += buf[idx + 1];
-        acc[c * 3 + 2] += buf[idx + 2];
+        const c = cy * cells + Math.min(cells - 1, Math.floor(x / cw));
+        acc[c * 3] += SRGB_TO_LINEAR[buf[idx]];
+        acc[c * 3 + 1] += SRGB_TO_LINEAR[buf[idx + 1]];
+        acc[c * 3 + 2] += SRGB_TO_LINEAR[buf[idx + 2]];
         cnt[c]++;
       }
     }

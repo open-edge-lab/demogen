@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field
 
 
 class Issue(BaseModel):
-    severity: Literal["blocker", "major", "minor"]
+    # info: misura riportata ma non vincolante (es. perf su renderer software)
+    severity: Literal["blocker", "major", "minor", "info"]
     source: Literal["gate", "critic", "user"] = "gate"
     at_s: float | None = None
     description: str
@@ -39,6 +40,8 @@ class PerfProfile(BaseModel):
 
 class FlashReport(BaseModel):
     max_flashes_per_s: float = 0.0
-    red_flash_events: int = 0
+    max_red_flashes_per_s: float = 0.0
+    red_flash_events: int = 0  # flash rossi totali (coppie di transizioni)
     windows: list[tuple[float, float]] = Field(default_factory=list)
+    area_cells: int = 0  # celle minime che devono transitare insieme (area WCAG)
     passed: bool = True

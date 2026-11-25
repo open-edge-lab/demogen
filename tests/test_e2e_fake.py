@@ -46,10 +46,11 @@ def test_generate_fake_e2e(tmp_path: Path) -> None:
         pngs = h.capture(times, 320, 180)
         stats = h.scene_stats(times, 320, 180)
         prof = h.profile(times, 320, 180, repeats=2)
+        gpu = str(h.info()["renderer"])
 
     frames = [np.asarray(Image.open(io.BytesIO(p)).convert("RGB")) for p in pngs]
     vm = video_metrics(frames, stats)
-    pf = perf_profile({float(k): v for k, v in prof["samples"].items()}, resolution=(320, 180))
+    pf = perf_profile({float(k): v for k, v in prof["samples"].items()}, resolution=(320, 180), gpu=gpu)
     metrics = {"video": vm, "perf": pf.model_dump()}
     issues = run_gates(metrics, cfg)
     assert not any(i.severity == "blocker" for i in issues), [i.description for i in issues]

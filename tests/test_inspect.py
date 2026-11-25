@@ -34,7 +34,8 @@ def test_inspect_demo_m1_swiftshader(harness) -> None:
     vm = video_metrics(frames, stats)
     assert vm["nan_ratio"] == 0.0  # la demo M1 non deve avere NaN
     assert vm["black_ratio"] < 0.9
-    pf = perf_profile({float(k): v for k, v in prof["samples"].items()}, resolution=(320, 180))
+    pf = perf_profile({float(k): v for k, v in prof["samples"].items()}, resolution=(320, 180),
+                      gpu=str(harness.info()["renderer"]))
     fl = analyze_flash(cells, fps=10)
     metrics = {"video": vm, "perf": pf.model_dump(), "flash": fl.model_dump()}
     issues = run_gates(metrics, CFG)
