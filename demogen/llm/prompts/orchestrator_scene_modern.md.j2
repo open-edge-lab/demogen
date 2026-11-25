@@ -20,7 +20,7 @@ Follow the contract prefix EXACTLY (envelope with one ```json + one ```glsl bloc
 
 ## Math oracle (optional, encouraged)
 If a formula in your shader rests on a mathematical claim, emit it in `math_requests`:
-- `expr`: python-safe scalar expression over your `inputs` (whitelisted funcs only: sin cos tan sqrt abs floor fract mod pow min max clamp mix step smoothstep len2 len3 dot2 dot3 dist2 norm2...; constants pi e tau)
+- `expr`: python-safe scalar expression over your `inputs` (whitelisted funcs only, exact arity: sin cos tan asin acos atan exp log log2 sqrt abs sign floor ceil fract (1 arg), atan2(y,x) mod pow min max step (2), clamp mix smoothstep (3), len2(x,y) len3(x,y,z) dot2/dist2 (4) dot3/dist3 (6); `**` only with constant exponent 2, 3 or 4 (else pow); constants pi e tau)
 - `kind`: one of `sdf` | `lipschitz` | `periodic_path` | `easing` | `identity`
 - `claim`: check params, e.g. `{"domain": [[-2,2],[-2,2]], "tol_grad": 0.05}` for sdf, `{"bound": 1.0, "domain": [[-3,3]]}` for lipschitz, `{"period": 16.0, "domain": [[0,16]]}` for periodic_path, `{"domain": [[0,1]]}` for easing/identity
 The oracle verifies each claim numerically in a sandboxed subprocess; **accepted** requests become GLSL functions named by `id` that you can call in mainImage. Rejected ones return with the reason — fix the expr and resubmit in the next revision.

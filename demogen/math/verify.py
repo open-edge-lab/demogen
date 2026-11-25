@@ -2,7 +2,13 @@
 
 Ogni claim è un'espressione safe (vedi safe_parse) valutata su punti random
 deterministici in un subprocess isolato; il check statistico avviene qui.
-Tipi soportati: sdf, lipschitz, periodic_path, easing, identity/other.
+Tipi supportati: sdf, lipschitz, periodic_path, easing, identity/other.
+
+Regole comuni:
+- si legano TUTTE le variabili della richiesta (ordine di `inputs`, più quelle usate
+  e non dichiarate): domain[i] è l'intervallo della i-esima, l'ultimo si ripete;
+- un claim è accettato solo se almeno max(8, 90%) dei punti si valutano (un claim
+  "vero" su zero punti non dice nulla).
 """
 
 from __future__ import annotations
@@ -25,29 +31,12 @@ class VerifyResult:
     samples: list[float] = field(default_factory=list)  # primi valori di f (debug)
 
 
-def _rand_points(domain: list[list[float]], n: int, seed: int) -> list[dict[str, float]]:
-    rng = random.Random(seed)
-    (x0, x1), (y0, y1) = domain[0], domain[1] if len(domain) > 1 else domain[0]
-    pts = []
-    for _ in range(n):
-        p = {"x": rng.uniform(x0, x1)}
-        if len(domain) > 1:
-            p["y"] = rng.uniform(y0, y1)
-        pts.append(p)
-    return pts
-
-
-def _grad(f: dict[tuple, float], base: dict[str, float], h: float = 1e-4) -> tuple[float, float]:
-    def at(dx: float, dy: float) -> float:
-        return f.get((base["x"] + dx, base.get("y", 0.0) + dy), math.nan)
-    gx = (at(h, 0.0) - at(-h, 0.0)) / (2 * h)
-    gy = (at(0.0, h) - at(0.0, -h)) / (2 * h)
-    return gx, gy
-
-
 MIN_SAMPLES, MAX_SAMPLES = 8, 4096
 MAX_TOL, MAX_TOL_GRAD = 1e-2, 0.1
 MAX_ABS_DOMAIN = 1e4
+MAX_INTERVALS = 4  # x, y, z, t
+MIN_VALID_FRAC = 0.9
+H = 1e-4  # passo delle differenze finite
 
 
 def _finite(claim: dict, key: str, default: float | None = None) -> float:
@@ -70,13 +59,13 @@ def _claim_params(claim: dict) -> tuple[list[list[float]], float, float, int]:
 
     - samples clampato a [8, 4096] (1e8 manderebbe in OOM il processo padre);
     - tol in (0, 1e-2] e tol_grad in (0, 0.1]: una tolleranza enorme farebbe passare qualsiasi claim;
-    - domain: 1..3 coppie finite [lo, hi] con lo < hi e |v| <= 1e4.
+    - domain: 1..4 coppie finite [lo, hi] con lo < hi e |v| <= 1e4.
     """
     if not isinstance(claim, dict):
         raise ValueError("claim non è un oggetto")
     domain = claim.get("domain", [[-2.0, 2.0], [-2.0, 2.0]])
-    if not isinstance(domain, list) or not 1 <= len(domain) <= 3:
-        raise ValueError(f"domain deve avere 1..3 intervalli: {domain!r}")
+    if not isinstance(domain, list) or not 1 <= len(domain) <= MAX_INTERVALS:
+        raise ValueError(f"domain deve avere 1..{MAX_INTERVALS} intervalli: {domain!r}")
     dom: list[list[float]] = []
     for iv in domain:
         if not isinstance(iv, (list, tuple)) or len(iv) != 2:
@@ -93,6 +82,22 @@ def _claim_params(claim: dict) -> tuple[list[list[float]], float, float, int]:
     return dom, min(tol, MAX_TOL), min(tol_grad, MAX_TOL_GRAD), max(MIN_SAMPLES, min(n, MAX_SAMPLES))
 
 
+def variables(req: MathRequest, names: set[str]) -> list[str]:
+    """Variabili da legare: ordine di `inputs`, poi quelle usate e non dichiarate (es. t)."""
+    out = list(req.inputs)
+    out += [n for n in sorted(names) if n not in out]
+    return out
+
+
+def _need(n: int) -> int:
+    return max(MIN_SAMPLES, math.ceil(MIN_VALID_FRAC * n)) if n >= MIN_SAMPLES else n
+
+
+def _too_few(kind: str, valid: int, n: int) -> VerifyResult:
+    return VerifyResult(ok=False, kind=kind, n_samples=valid,
+                        detail=f"solo {valid}/{n} punti valutati (servono >= {_need(n)})")
+
+
 def verify_claim(req: MathRequest, seed: int = 42) -> VerifyResult:
     """Verifica un MathRequest. Ritorna VerifyResult con ok/detail/max_err.
 
@@ -102,115 +107,163 @@ def verify_claim(req: MathRequest, seed: int = 42) -> VerifyResult:
     claim = req.claim
     names = used_names(expr)
     domain, tol, tol_grad, n = _claim_params(claim)
+    vars_ = variables(req, names)
+    dom = {v: domain[min(i, len(domain) - 1)] for i, v in enumerate(vars_)}
+    rng = random.Random(seed)
 
-    if "t" in names:
-        # dominio temporale 1D: domain = [[t0, t1]]
-        t0, t1 = domain[0]
-        base_pts = [{"t": random.Random(seed + i).uniform(t0, t1)} for i in range(n)]
-    else:
-        base_pts = _rand_points(domain, n, seed)
+    def rand_point() -> dict[str, float]:
+        return {v: rng.uniform(*dom[v]) for v in vars_}
 
     kind = req.kind
 
     if kind == "sdf":
-        # claim: f è una SDF esatta -> |grad f| = 1 vicino alla superficie e
-        # (se inside_negative) esiste regione con f < 0 e regione con f > 0.
-        inside_neg = bool(claim.get("inside_negative", True))
-        evals: list[dict[str, float]] = []
-        keys: list[tuple] = []
-        h = 1e-4
-        for p in base_pts:
-            for dx, dy in ((0, 0), (h, 0), (-h, 0), (0, h), (0, -h)):
-                q = dict(p)
-                if "x" in q:
-                    q["x"] += dx
-                if "y" in q:
-                    q["y"] = q.get("y", 0.0) + dy
-                evals.append(q)
-                keys.append((q.get("x", 0.0), q.get("y", 0.0)))
-        vals = eval_points(expr, evals)
-        fmap = dict(zip(keys, vals))
-        errs: list[float] = []
-        for p in base_pts:
-            f0 = fmap.get((p.get("x", 0.0), p.get("y", 0.0)))
-            if f0 is None or abs(f0) > 0.5:
-                continue  # gradiente relevante solo vicino alla superficie
-            gx, gy = _grad(fmap, p)
-            errs.append(abs(math.hypot(gx, gy) - 1.0))
-        fvals = [v for v in vals if v is not None]
-        has_neg = any(v < 0 for v in fvals)
-        has_pos = any(v > 0 for v in fvals)
-        max_err = max(errs) if errs else None
-        ok_sign = (not inside_neg) or (has_neg and has_pos)
-        ok_grad = max_err is not None and max_err <= tol_grad
-        return VerifyResult(
-            ok=ok_sign and ok_grad,
-            kind=kind,
-            detail=f"|grad|-1 max={max_err}, segno ok={ok_sign} (neg={has_neg}, pos={has_pos})",
-            max_err=max_err,
-            n_samples=len(fvals),
-            samples=fvals[:8],
-        )
+        return _verify_sdf(expr, claim, names, vars_, dom, n, tol_grad, rand_point)
 
     if kind == "lipschitz":
         bound = _finite(claim, "bound")
-        pts = base_pts * 2  # doppie per formare coppie
-        vals = eval_points(expr, pts)
-        pairs = list(zip(pts[::2], vals[::2], pts[1::2], vals[1::2]))
-        max_ratio = 0.0
-        for a, fa, b, fb in pairs:
-            if fa is None or fb is None:
+        lv = [v for v in vars_ if v in names]
+        span = sum(dom[v][1] - dom[v][0] for v in lv) / max(1, len(lv))
+        delta = 1e-3 * span
+        base = [rand_point() for _ in range(n)]
+        pairs = []
+        for p in base:  # coppia VICINA: p e p + δ·u, u unitario casuale (pendenza locale)
+            u = [rng.gauss(0.0, 1.0) for _ in lv] or [0.0]
+            norm = math.sqrt(sum(c * c for c in u)) or 1.0
+            q = dict(p)
+            for v, c in zip(lv, u):
+                q[v] = p[v] + delta * c / norm
+            pairs.append(q)
+        vals = eval_points(expr, base + pairs)
+        fa, fb = vals[:n], vals[n:]
+        ratios = []
+        for p, q, a, b in zip(base, pairs, fa, fb):
+            if a is None or b is None:
                 continue
-            dist = math.dist([a.get("x", a.get("t", 0.0)), a.get("y", 0.0)],
-                             [b.get("x", b.get("t", 0.0)), b.get("y", 0.0)])
-            if dist < 1e-9:
-                continue
-            max_ratio = max(max_ratio, abs(fa - fb) / dist)
-        ok = max_ratio <= bound + tol
+            dist = math.sqrt(sum((q[v] - p[v]) ** 2 for v in lv))
+            ratios.append(abs(a - b) / dist if dist > 0 else 0.0)
+        if len(ratios) < _need(n):
+            return _too_few(kind, len(ratios), n)
+        max_ratio = max(ratios)
         return VerifyResult(
-            ok=ok, kind=kind,
-            detail=f"max |df|/dist={max_ratio:.4f} vs bound={bound}",
-            max_err=max_ratio, n_samples=len(pairs),
+            ok=max_ratio <= bound + tol, kind=kind,
+            detail=f"max |df|/dist={max_ratio:.4f} vs bound={bound} su {len(ratios)} coppie vicine",
+            max_err=max_ratio, n_samples=len(ratios),
         )
 
     if kind == "periodic_path":
         period = _finite(claim, "period")
-        t0, t1 = domain[0]
-        pts = [{"t": random.Random(seed + i).uniform(t0, t1)} for i in range(n)]
-        shifted = [{"t": p["t"] + period} for p in pts]
-        v1 = eval_points(expr, pts)
-        v2 = eval_points(expr, shifted)
+        if "t" not in vars_:
+            return VerifyResult(ok=False, kind=kind, detail="periodic_path senza variabile t")
+        pts = [rand_point() for _ in range(n)]
+        shifted = [p | {"t": p["t"] + period} for p in pts]
+        vals = eval_points(expr, pts + shifted)
+        v1, v2 = vals[:n], vals[n:]
         errs = [abs(a - b) for a, b in zip(v1, v2) if a is not None and b is not None]
-        max_err = max(errs) if errs else None
+        if len(errs) < _need(n):
+            return _too_few(kind, len(errs), n)
+        max_err = max(errs)
         return VerifyResult(
-            ok=max_err is not None and max_err <= tol, kind=kind,
+            ok=max_err <= tol, kind=kind,
             detail=f"max |f(t+T)-f(t)|={max_err} (T={period}, tol={tol})",
-            max_err=max_err, n_samples=len(errs), samples=v1[:8],
+            max_err=max_err, n_samples=len(errs), samples=[v for v in v1 if v is not None][:8],
         )
 
     if kind == "easing":
-        lo, hi = domain[0]
-        v0 = eval_points(expr, [{"t": lo}])[0]
-        v1 = eval_points(expr, [{"t": hi}])[0]
-        ts = [{"t": lo + (hi - lo) * i / 32} for i in range(33)]
+        tvar = "t" if "t" in vars_ else vars_[0]
+        lo, hi = dom[tvar]
+        mid = {v: (dom[v][0] + dom[v][1]) / 2 for v in vars_ if v != tvar}
+        ts = [mid | {tvar: lo + (hi - lo) * i / 32} for i in range(33)]
         vs = eval_points(expr, ts)
-        monotonic = all(
-            b >= a - tol for a, b in zip(vs, vs[1:]) if a is not None and b is not None
-        )
-        ok = (v0 is not None and v1 is not None and abs(v0) <= tol and abs(v1 - 1.0) <= tol
-              and monotonic)
+        v0, v1 = vs[0], vs[-1]
+        good = [v for v in vs if v is not None]
+        if len(good) < _need(len(vs)) or v0 is None or v1 is None:
+            return _too_few(kind, len(good), len(vs))
+        monotonic = all(b >= a - tol for a, b in zip(vs, vs[1:]) if a is not None and b is not None)
+        ok = abs(v0) <= tol and abs(v1 - 1.0) <= tol and monotonic
         return VerifyResult(
             ok=ok, kind=kind,
             detail=f"f({lo})={v0}, f({hi})={v1}, monotona={monotonic}",
-            max_err=max(abs(v0 or 0), abs((v1 or 0) - 1.0)), n_samples=len(vs), samples=vs[:8],
+            max_err=max(abs(v0), abs(v1 - 1.0)), n_samples=len(good), samples=good[:8],
         )
 
     # identity / other: |f| <= tol ovunque nel dominio
-    vals = eval_points(expr, base_pts)
+    vals = eval_points(expr, [rand_point() for _ in range(n)])
     good = [v for v in vals if v is not None]
-    max_err = max((abs(v) for v in good), default=None)
+    if len(good) < _need(n):
+        return _too_few(kind or "identity", len(good), n)
+    max_err = max(abs(v) for v in good)
     return VerifyResult(
-        ok=max_err is not None and max_err <= tol, kind=kind or "identity",
+        ok=max_err <= tol, kind=kind or "identity",
         detail=f"max |f|={max_err} (tol={tol})",
         max_err=max_err, n_samples=len(good), samples=good[:8],
+    )
+
+
+def _verify_sdf(expr, claim, names, vars_, dom, n, tol_grad, rand_point) -> VerifyResult:
+    """SDF esatta: |∇f| = 1 vicino alla superficie, f < 0 dentro e f > 0 sul bordo del dominio.
+
+    Il bordo del dominio (anello/guscio esterno) deve stare FUORI dalla forma: una SDF
+    invertita (1 − |p|) ha entrambi i segni ma è negativa fuori, quindi viene rifiutata.
+    Con `inside` (coordinate spaziali, nell'ordine) si verifica anche f(inside) < 0.
+    """
+    kind = "sdf"
+    spatial = [v for v in vars_ if v != "t" and v in names]
+    if not spatial:
+        return VerifyResult(ok=False, kind=kind, detail="sdf senza variabili spaziali usate")
+    inside_neg = bool(claim.get("inside_negative", True))
+    base = [rand_point() for _ in range(n)]
+    evals: list[dict[str, float]] = []
+    for p in base:
+        evals.append(p)
+        for v in spatial:
+            evals.append(p | {v: p[v] + H})
+            evals.append(p | {v: p[v] - H})
+    # guscio esterno: punti sulle facce del box dei domini spaziali
+    ring = []
+    n_ring = max(MIN_SAMPLES, n // 2)
+    for i in range(n_ring):
+        q = rand_point()
+        v = spatial[i % len(spatial)]
+        q[v] = dom[v][i // len(spatial) % 2]
+        ring.append(q)
+    inside = claim.get("inside")
+    inside_pt = None
+    if inside is not None:
+        if not isinstance(inside, list) or len(inside) != len(spatial):
+            raise ValueError(f"inside deve avere {len(spatial)} coordinate ({spatial})")
+        inside_pt = rand_point() | {v: float(c) for v, c in zip(spatial, inside)}
+    vals = eval_points(expr, evals + ring + ([inside_pt] if inside_pt else []))
+    stride = 1 + 2 * len(spatial)
+    errs: list[float] = []
+    f0s: list[float] = []
+    for i in range(n):
+        chunk = vals[i * stride:(i + 1) * stride]
+        if any(v is None for v in chunk):
+            continue
+        f0 = chunk[0]
+        f0s.append(f0)
+        if abs(f0) > 0.5:
+            continue  # gradiente rilevante solo vicino alla superficie
+        g2 = sum(((chunk[1 + 2 * k] - chunk[2 + 2 * k]) / (2 * H)) ** 2 for k in range(len(spatial)))
+        errs.append(abs(math.sqrt(g2) - 1.0))
+    if len(f0s) < _need(n):
+        return _too_few(kind, len(f0s), n)
+    ring_vals = vals[n * stride:n * stride + n_ring]
+    ring_ok = all(v is not None and v > 0 for v in ring_vals)
+    has_neg = any(v < 0 for v in f0s)
+    inside_ok = True
+    if inside_pt is not None:
+        fi = vals[-1]
+        inside_ok = fi is not None and fi < 0
+    max_err = max(errs) if errs else None
+    ok_sign = (not inside_neg) or (has_neg and ring_ok and inside_ok)
+    ok_grad = max_err is not None and max_err <= tol_grad
+    return VerifyResult(
+        ok=ok_sign and ok_grad,
+        kind=kind,
+        detail=(f"|grad|-1 max={max_err} su {len(errs)} punti vicino alla superficie ({'x'.join(spatial)}), "
+                f"segno ok={ok_sign} (dentro<0: {has_neg}, bordo>0: {ring_ok}, inside: {inside_ok})"),
+        max_err=max_err,
+        n_samples=len(f0s),
+        samples=f0s[:8],
     )

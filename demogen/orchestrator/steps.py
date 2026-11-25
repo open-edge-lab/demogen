@@ -342,7 +342,7 @@ def run_oracle_for(ctx, scene_id: str, version: int, requests) -> str:
     Ritorna il GLSL delle richieste accepted (vuoto se nessuna)."""
     from ..math import run_math_oracle
 
-    oracle = run_math_oracle(requests)
+    oracle = run_math_oracle(requests, reserved_names=frozenset(LIB))
     ctx.project.write(
         f"scenes/{scene_id}/v{version}.math.json",
         json.dumps(
@@ -608,6 +608,15 @@ def history_text(ctx, scene_id: str) -> str:
     return "\n".join(lines) or "-"
 
 
+def math_rejections(ctx, scene_id: str, version: int) -> str:
+    """Richieste dell'oracolo rifiutate per la versione (con il motivo), da rimandare all'LLM."""
+    p = ctx.project.path / "scenes" / scene_id / f"v{version}.math.json"
+    if not p.exists():
+        return "-"
+    rej = [r for r in json.loads(p.read_text(encoding="utf-8")).get("results", []) if r.get("status") != "accepted"]
+    return "\n".join(f"- {r.get('id')}: {str(r.get('reason', ''))[:300]}" for r in rej) or "-"
+
+
 def _version_parent(sdir: Path, v: int) -> int | None:
     mp = sdir / f"v{v}.meta.json"
     if not mp.exists():
@@ -649,6 +658,7 @@ def s7_revise(ctx, harness: Harness, spec: DemoSpec, scene: SceneBrief, version:
         critique_json=json.dumps(critique, default=str)[:2000],
         issues_text=issues_text,
         history_text=history_text(ctx, scene.id),
+        math_rejections=math_rejections(ctx, scene.id, version),
     )
     msgs = [
         {"role": "system", "content": P.system_prompt(spec.timeline.bpm)},

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from ..glsl.minify import minify
 from ..glsl.preprocessor import preprocess
-from ..glsl.treeshake import load_library, treeshake
+from ..glsl.treeshake import load_library, shared_common_conflicts, treeshake
 from ..project.store import slugify
 from ..spec.models import DemoPayloadSpec
 
@@ -39,6 +39,9 @@ def build_payload_from_sources(
         k: (math_srcs[k] + "\n" + v if k in math_srcs else v)
         for k, v in scenes_src.items()
     }
+    conflicts = shared_common_conflicts(merged, style_src, lib)
+    if conflicts:
+        raise ValueError("bundle: " + "; ".join(conflicts))
     entry = "\n".join(merged.values()) + "\n" + style_src
     common = treeshake(entry, lib) + "\n" + style_src
     if audio_src:

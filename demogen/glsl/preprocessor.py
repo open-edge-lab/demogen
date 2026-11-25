@@ -1,15 +1,20 @@
-"""Preprocessor GLSL minimale: #include, #define, mappa righe.
+"""Preprocessor GLSL minimale: #include (include-once, path confinati), mappa righe.
 
-L expansión de los include se hace rispetto a `lib/` (demogen/glsl/lib).
-La mappa righe permite di rimappare gli errori del compilatore sulle righe
-dei sorgenti originali (file, riga).
+Risoluzione di `#include "x.glsl"`: prima rispetto alla cartella del file che include,
+poi rispetto a `base_dir`, poi alla libreria (demogen/glsl/lib). Il path deve essere
+relativo e restare dentro `base_dir` o la libreria: niente path assoluti né `..` che
+escono. Ogni file viene incluso una sola volta (include-once); un ciclo è un errore
+con la catena completa.
+
+La mappa righe permette di rimappare gli errori del compilatore sulle righe dei
+sorgenti originali (file, riga).
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 LIB_DIR = Path(__file__).resolve().parent / "lib"
 
@@ -28,27 +33,43 @@ class SourceMap:
         return ("<sconosciuto>", assembled_line)
 
 
+def _resolve_include(rel: str, including_dir: Path | None, roots: list[Path], where: str) -> Path:
+    if PurePosixPath(rel).is_absolute() or Path(rel).is_absolute() or re.match(r"^[A-Za-z]:", rel):
+        raise ValueError(f"#include con path assoluto non ammesso: {rel!r} ({where})")
+    candidates = ([including_dir] if including_dir else []) + roots
+    for base in candidates:
+        inc = (base / rel).resolve()
+        if not any(inc.is_relative_to(r) for r in roots):
+            raise ValueError(f"#include fuori dalle cartelle ammesse: {rel!r} ({where})")
+        if inc.exists():
+            return inc
+    raise FileNotFoundError(f"#include non trovato: {rel} ({where})")
+
+
 def preprocess(src: str, base_dir: Path | None = None, max_depth: int = 8) -> tuple[str, SourceMap]:
     """Espande gli #include ricorsivamente. Ritorna (sorgente, mappa_righe)."""
-    base = base_dir or LIB_DIR
+    roots = list(dict.fromkeys(p.resolve() for p in (base_dir or LIB_DIR, LIB_DIR)))
     smap = SourceMap()
     out_lines: list[str] = []
+    included: set[Path] = set()
 
-    def expand(text: str, fname: str, depth: int) -> None:
-        if depth > max_depth:
-            raise ValueError(f"#include troppo annidati (>{max_depth}) da {fname}")
+    def expand(text: str, fname: str, here: Path | None, stack: list[str]) -> None:
+        if len(stack) > max_depth:
+            raise ValueError(f"#include troppo annidati (>{max_depth}): {' -> '.join(stack)}")
         for lineno, line in enumerate(text.splitlines(), start=1):
             m = _INCLUDE_RE.match(line)
-            if m:
-                inc = (base / m.group(1)).resolve()
-                if not inc.exists():
-                    raise FileNotFoundError(
-                        f"#include non trovato: {m.group(1)} (da {fname}:{lineno})"
-                    )
-                expand(inc.read_text(encoding="utf-8"), str(inc), depth + 1)
-            else:
+            if not m:
                 out_lines.append(line)
                 smap.entries.append((fname, lineno))
+                continue
+            inc = _resolve_include(m.group(1), here, roots, f"{fname}:{lineno}")
+            key = str(inc)
+            if key in stack:
+                raise ValueError(f"#include ciclico: {' -> '.join([*stack, key])}")
+            if inc in included:
+                continue  # include-once
+            included.add(inc)
+            expand(inc.read_text(encoding="utf-8"), key, inc.parent, [*stack, key])
 
-    expand(src, "<input>", 0)
+    expand(src, "<input>", None, ["<input>"])
     return "\n".join(out_lines) + "\n", smap

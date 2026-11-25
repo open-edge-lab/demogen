@@ -19,10 +19,15 @@ float gnoise(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
     vec2 u = f * f * (3.0 - 2.0 * f);
-    vec2 ga = vec2(hash21(i) * 2.0 - 1.0, hash21(i + 7.13) * 2.0 - 1.0);
-    vec2 gb = vec2(hash21(i + vec2(1.0, 0.0)) * 2.0 - 1.0, hash21(i + vec2(1.0, 7.13)) * 2.0 - 1.0);
-    vec2 gc = vec2(hash21(i + vec2(0.0, 1.0)) * 2.0 - 1.0, hash21(i + vec2(7.13, 1.0)) * 2.0 - 1.0);
-    vec2 gd = vec2(hash21(i + vec2(1.0, 1.0)) * 2.0 - 1.0, hash21(i + 13.7) * 2.0 - 1.0);
+    // il gradiente di un angolo dipende SOLO dal punto del reticolo: celle vicine
+    // vedono lo stesso gradiente nello stesso punto → noise continuo agli interi
+    vec2 ib = i + vec2(1.0, 0.0);
+    vec2 ic = i + vec2(0.0, 1.0);
+    vec2 id = i + vec2(1.0, 1.0);
+    vec2 ga = vec2(hash21(i), hash21(i + 7.13)) * 2.0 - 1.0;
+    vec2 gb = vec2(hash21(ib), hash21(ib + 7.13)) * 2.0 - 1.0;
+    vec2 gc = vec2(hash21(ic), hash21(ic + 7.13)) * 2.0 - 1.0;
+    vec2 gd = vec2(hash21(id), hash21(id + 7.13)) * 2.0 - 1.0;
     float a = dot(ga, f);
     float b = dot(gb, f - vec2(1.0, 0.0));
     float c = dot(gc, f - vec2(0.0, 1.0));

@@ -8,26 +8,40 @@ from __future__ import annotations
 
 import re
 
-_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
-_LINE_COMMENT = re.compile(r"//[^\n]*")
+# commenti in UN solo passaggio: vince quello che inizia prima, quindi `// TODO /*`
+# non apre un blocco che si mangerebbe il codice fino al `*/` successivo
+_COMMENTS = re.compile(r"//[^\n]*|/\*.*?\*/", re.DOTALL)
 _WS = re.compile(r"[ \t]+")
-_AROUND_OP = re.compile(r"\s*([+\-*/%<>=!&|^~,;(){}\[\]])\s*")
-_FLOAT_INT = re.compile(r"\b(\d+)\.0+\b")
-_FLOAT_LEAD = re.compile(r"\b0\.(\d+)")
-_FLOAT_TRAIL = re.compile(r"\.(\d+)")
+_AROUND_OP = re.compile(r"\s*([+\-*/%<>=!&|^~,;(){}\[\]?:])\s*")
+# `b - -c`, `e + +f`, `h - --i`: fra due segni uguali lo spazio serve (b--c è un decremento)
+_SAME_SIGN = re.compile(r"([+-])\s+(?=\1)")
+_KEEP = "\x00"
+_FLOAT_TRAIL = re.compile(r"\b(\d+\.\d*?[1-9])0+\b")  # 1.50 → 1.5
+_FLOAT_INT = re.compile(r"\b(\d+)\.0+\b")  # 1.0 → 1.
+_FLOAT_LEAD = re.compile(r"\b0\.(\d+)")  # 0.5 → .5
+
+
+def _drop_comment(m: re.Match[str]) -> str:
+    text = m.group(0)
+    if text.startswith("//"):
+        return ""
+    # un blocco su più righe lascia le sue righe: le direttive # restano a inizio riga
+    return "\n" * text.count("\n") or " "
 
 
 def minify(src: str) -> str:
-    src = _BLOCK_COMMENT.sub(" ", src)
-    src = _LINE_COMMENT.sub("", src)
+    src = _COMMENTS.sub(_drop_comment, src)
     out_lines: list[str] = []
     for line in src.splitlines():
         stripped = line.strip()
         if stripped.startswith("#"):
-            out_lines.append(stripped)  # direktive: una per riga, non toccarle
+            out_lines.append(stripped)  # direttive: una per riga, non toccarle
             continue
         line = _WS.sub(" ", line)
+        line = _SAME_SIGN.sub(lambda m: m.group(1) + _KEEP, line)
         line = _AROUND_OP.sub(r"\1", line)
+        line = line.replace(_KEEP, " ")
+        line = _FLOAT_TRAIL.sub(r"\1", line)
         line = _FLOAT_INT.sub(r"\1.", line)
         line = _FLOAT_LEAD.sub(r".\1", line)
         line = line.strip()

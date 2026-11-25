@@ -14,8 +14,9 @@ float beatPulse(float phase, float k) {
 }
 
 /// @fn beatFlash
-/// flash sul beat che rispetta uFlashLimit (fotosensibilità):
-/// ampiezza scalata da uFlashLimit, mai a tutto schermo.
+/// flash sul beat che rispetta uFlashLimit (fotosensibilità): ampiezza = uFlashLimit.
+/// Il player lo tiene a 1 fino a 3 beat/s (un lampo per beat è conforme a WCAG 2.3.1)
+/// e lo porta sotto la soglia del 10% di luminanza oltre i 3 beat/s o con reduced-motion.
 float beatFlash(float phase, float k) {
     return uFlashLimit * exp(-k * phase);
 }

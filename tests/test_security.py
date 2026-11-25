@@ -123,7 +123,7 @@ def test_claim_samples_enormi_clampati_senza_oom() -> None:
         {"tol_grad": math.inf},
         {"domain": [[0, math.inf]]},
         {"domain": [[1, 0]]},
-        {"domain": [[0, 1]] * 4},
+        {"domain": [[0, 1]] * 5},
         {"domain": [[0, 1e9]]},
         {"domain": "boom"},
         {"samples": "molti"},

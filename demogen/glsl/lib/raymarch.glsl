@@ -56,7 +56,7 @@ float calcAO(vec3 p, vec3 n) {
     int steps = qSteps(5);
     for (int i = 0; i < 8; i++) {
         if (i >= steps) break;
-        float h = 0.01 + 0.12 * float(i);
+        float h = 0.01 + 0.12 * float(i) / 4.0; // raggio max ~0.13 (con 0.12*i arrivava a 0.49)
         occ += (h - map(p + n * h)) * sca;
         sca *= 0.95;
     }

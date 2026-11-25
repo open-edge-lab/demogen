@@ -11,7 +11,11 @@ Critic report: {{ critique_json }}
 Gate issues (ordered by severity):
 {{ issues_text }}
 
-Previous version scores: {{ history_text }}
+Previous versions:
+{{ history_text }}
+
+Math requests REJECTED by the oracle for this version (fix the expr/claim and resubmit in `math_requests`, or stop calling those functions):
+{{ math_rejections }}
 
 Instruction: modify the MINIMUM needed to fix the issues in severity order. Keep what works. If perf hotspots are listed, reduce cost at those times (bounding volume, qSteps, fewer octaves far away, shadow/AO only above qEnable threshold). Do not rewrite from scratch.
 

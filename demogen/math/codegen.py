@@ -1,26 +1,25 @@
 """Codegen: da AST safe (whitelist) a GLSL ES 3.00 normalizzato.
 
-Traduce solo nodi whitelist; le funzioni vettoriali 2D/3D diventano
-costruttori vec2/vec3. Il risultato è deterministico e non contiene mai
-codice arbitrario (niente stringhe, attributi, subscript).
+Traduce solo nodi whitelist; le funzioni vettoriali 2D/3D diventano costruttori
+vec2/vec3 (per dot/distance: due vettori con metà degli argomenti ciascuno). Il
+risultato è deterministico e non contiene mai codice arbitrario (niente stringhe,
+attributi, subscript). La semantica coincide con quella del runner di verifica:
+`%` → mod() floored, `**` con esponente 2..4 → moltiplicazioni, atan2 → atan(y, x).
 """
 
 from __future__ import annotations
 
 import ast
 
-from .safe_parse import CONSTANTS, FUNCTIONS, parse_safe, used_names
+from .safe_parse import CONSTANTS, FUNCTIONS, check_identifier, parse_safe, used_names
 
-_BINOP = {
-    ast.Add: "+", ast.Sub: "-", ast.Mult: "*", ast.Div: "/", ast.Mod: "mod", ast.Pow: None,
-}
+_BINOP = {ast.Add: "+", ast.Sub: "-", ast.Mult: "*", ast.Div: "/"}
 
-# funzioni vettoriali: nome -> (funzione GLSL, numero componenti del vec)
+# funzioni vettoriali: nome -> (funzione GLSL, componenti, numero di vettori)
 _VEC_FUNCS = {
-    "len2": ("length", 2), "len3": ("length", 3),
-    "dot2": ("dot", 2), "dot3": ("dot", 3),
-    "dist2": ("distance", 2), "dist3": ("distance", 3),
-    "norm2": ("normalize", 2), "norm3": ("normalize", 3),
+    "len2": ("length", 2, 1), "len3": ("length", 3, 1),
+    "dot2": ("dot", 2, 2), "dot3": ("dot", 3, 2),
+    "dist2": ("distance", 2, 2), "dist3": ("distance", 3, 2),
 }
 
 
@@ -43,30 +42,36 @@ def _gen(node: ast.AST) -> str:
         op = "-" if isinstance(node.op, ast.USub) else "+"
         return f"({op}{_gen(node.operand)})"
     if isinstance(node, ast.BinOp):
+        left, right = _gen(node.left), _gen(node.right)
         if isinstance(node.op, ast.Pow):
-            return f"pow({_gen(node.left)}, {_gen(node.right)})"
-        op = _BINOP[type(node.op)]
-        return f"({_gen(node.left)} {op} {_gen(node.right)})"
+            n = int(float(node.right.value))  # type: ignore[attr-defined]  # 2..4, garantito da parse_safe
+            return "(" + " * ".join([f"({left})"] * n) + ")"
+        if isinstance(node.op, ast.Mod):
+            return f"mod({left}, {right})"
+        return f"({left} {_BINOP[type(node.op)]} {right})"
     if isinstance(node, ast.Call):
         fname = node.func.id  # type: ignore[attr-defined]
-        args = ", ".join(_gen(a) for a in node.args)
-        if fname in _VEC_FUNCS:  # len2/dot2/... -> length(vec2(a, b)) ecc.
-            glsl_fn, nargs = _VEC_FUNCS[fname]
-            return f"{glsl_fn}(vec{nargs}({args}))"
-        return f"{FUNCTIONS[fname]}({args})"
+        args = [_gen(a) for a in node.args]
+        if fname in _VEC_FUNCS:  # len2(x,y) → length(vec2(x, y)); dot2(a,b,c,d) → dot(vec2(a,b), vec2(c,d))
+            glsl_fn, n, k = _VEC_FUNCS[fname]
+            vecs = [f"vec{n}({', '.join(args[i * n:(i + 1) * n])})" for i in range(k)]
+            return f"{glsl_fn}({', '.join(vecs)})"
+        return f"{FUNCTIONS[fname]}({', '.join(args)})"
     raise ValueError(f"nodo non gestito: {type(node).__name__}")
 
 
 def codegen_glsl(req_id: str, expr: str, params: list[str]) -> str:
     """Genera la funzione GLSL ES 3.00 per un'espressione verificata.
 
-    `params` sono i nomi delle variabili usate (oltre a costanti/funzioni),
-    tipicamente un sottoinsieme di x, y, z, t. La firma è
+    `params` è la firma, NELL'ORDINE in cui il chiamante la userà (l'ordine di
+    `inputs` della richiesta); deve contenere tutte le variabili usate. La firma è
     `float <req_id>(float p0, float p1, ...)`.
     """
+    check_identifier(req_id, "id della funzione")
+    for p in params:
+        check_identifier(p, "parametro")
     tree = parse_safe(expr)
-    names = sorted(used_names(expr))
-    unknown = [n for n in names if n not in params]
+    unknown = sorted(n for n in used_names(expr) if n not in params)
     if unknown:
         raise ValueError(f"parametri mancanti: {unknown}")
     sig = ", ".join(f"float {p}" for p in params)

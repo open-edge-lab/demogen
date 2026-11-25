@@ -15,14 +15,15 @@ float chipKick(float t) {
 /// @fn chipHat
 /// hi-hat chiuso: rumore bianco (hash per campione) con decadimento rápido.
 float chipHat(float t) {
-    float n = fract(sin(floor(t * iSampleRate) * 12.9898) * 43758.5453) * 2.0 - 1.0;
+    // hash intero per campione: fract(sin(x)) con x ~1e5 dipende dalla precisione della GPU
+    float n = hash11(floor(t * iSampleRate)) * 2.0 - 1.0;
     return n * exp(-t * 50.0) * 0.22;
 }
 
 /// @fn chipSnare
 /// snare: rumore + tono a 180 Hz, decadimento medio.
 float chipSnare(float t) {
-    float n = fract(sin(floor(t * iSampleRate) * 78.233) * 12543.123) * 2.0 - 1.0;
+    float n = hash11(floor(t * iSampleRate) + 0.5) * 2.0 - 1.0; // stream diverso dall'hi-hat
     return (n * exp(-t * 25.0) * 0.5 + sin(6.2831 * 180.0 * t) * exp(-t * 18.0) * 0.4);
 }
 
