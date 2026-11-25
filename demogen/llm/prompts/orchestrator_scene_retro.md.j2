@@ -16,3 +16,6 @@ Avoid: {{ spec.avoid | join(", ") }}
 Scroller text (if any): {{ spec.text }}
 
 Follow the contract prefix EXACTLY (envelope with one ```json + one ```glsl block; only mainImage body).
+
+## Math oracle (optional, encouraged)
+Same as modern: emit verified formulas in `math_requests` (kind sdf|lipschitz|periodic_path|easing|identity, python-safe `expr` over `inputs`, `claim` with domain/tol). Accepted requests become callable GLSL functions named by `id`.

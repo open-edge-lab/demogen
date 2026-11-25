@@ -16,20 +16,33 @@ PLAYER_DIST = Path(__file__).resolve().parents[2] / "player" / "dist"
 
 
 def build_payload_from_sources(
-    spec: dict, scenes_src: dict[str, str], style_src: str = "", do_minify: bool = True
+    spec: dict,
+    scenes_src: dict[str, str],
+    style_src: str = "",
+    do_minify: bool = True,
+    math_srcs: dict[str, str] | None = None,
 ) -> dict:
-    """Payload .demo da sorgenti in memoria (pipeline)."""
+    """Payload .demo da sorgenti in memoria (pipeline).
+
+    `math_srcs` (Fase 6, oracolo matematico): fonctions GLSL verificate per scena,
+    concatenate davanti allo shader della scena.
+    """
     bpm = float(spec["bpm"])
     bpb = int(spec.get("beats_per_bar", 4))
     scenes_spec = spec["scenes"]
     lib = load_library(LIB_DIR)
-    entry = "\n".join(scenes_src.values()) + "\n" + style_src
+    math_srcs = math_srcs or {}
+    merged = {
+        k: (math_srcs[k] + "\n" + v if k in math_srcs else v)
+        for k, v in scenes_src.items()
+    }
+    entry = "\n".join(merged.values()) + "\n" + style_src
     common = treeshake(entry, lib) + "\n" + style_src
     if do_minify:
         common = minify(common)
-        scenes_src = {k: minify(v) for k, v in scenes_src.items()}
+        merged = {k: minify(v) for k, v in merged.items()}
 
-    return _finalize_payload(spec, bpm, bpb, scenes_spec, scenes_src, common)
+    return _finalize_payload(spec, bpm, bpb, scenes_spec, merged, common)
 
 
 def build_payload(spec: dict, base_dir: Path, do_minify: bool = True) -> dict:

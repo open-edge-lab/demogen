@@ -55,11 +55,14 @@ class MathRequest(BaseModel):
     id: str
     kind: Literal[
         "sdf", "lipschitz", "intersection", "periodic_path", "easing",
-        "parametric_curve", "attractor_params", "fourier", "other",
+        "parametric_curve", "attractor_params", "fourier", "identity", "other",
     ]
     description: str
     inputs: dict[str, str] = Field(default_factory=dict)
     output_signature: str = ""
+    # Fase 6 (oracolo): espressione python-safe verificabile + parametri del claim
+    expr: str = ""
+    claim: dict = Field(default_factory=dict)
 
 
 class ShaderSubmission(BaseModel):

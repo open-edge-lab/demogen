@@ -146,7 +146,11 @@ async def s2_draft(ctx, spec: DemoSpec, style_src: str) -> dict[str, str]:
         env = parse_envelope(resp.content)
         meta = ShaderSubmission.model_validate(env.json())
         src = env.glsl_blocks[0]
-        return scene.id, src, meta.model_dump()
+        # Fase 6: oracolo matematico sui math_requests (verifica in subprocess isolato)
+        math_glsl = ""
+        if meta.math_requests:
+            math_glsl = run_oracle_for(ctx, scene.id, 1, meta.math_requests)
+        return scene.id, src, meta.model_dump(), math_glsl
 
     sem = asyncio.Semaphore(ctx.cfg.budget.llm_concurrency)
 
@@ -156,11 +160,42 @@ async def s2_draft(ctx, spec: DemoSpec, style_src: str) -> dict[str, str]:
 
     results = await asyncio.gather(*(bounded(s) for s in spec.scenes))
     srcs: dict[str, str] = {}
-    for scene_id, src, meta in results:
+    for scene_id, src, meta, _math_glsl in results:
         srcs[scene_id] = src
         ctx.project.write(f"scenes/{scene_id}/v1.glsl", src)
         ctx.project.write(f"scenes/{scene_id}/v1.meta.json", json.dumps(meta, indent=1))
     return srcs
+
+
+def run_oracle_for(ctx, scene_id: str, version: int, requests) -> str:
+    """Fase 6: verifica i math_requests con l'oracolo e salva v{version}.math.{json,glsl}.
+
+    Ritorna il GLSL delle richieste accepted (vuoto se nessuna)."""
+    from ..math import run_math_oracle
+
+    oracle = run_math_oracle(requests)
+    ctx.project.write(
+        f"scenes/{scene_id}/v{version}.math.json",
+        json.dumps(
+            {"results": [r.__dict__ | {"verify": r.verify.__dict__ if r.verify else None}
+                         for r in oracle.results]},
+            indent=1, default=str,
+        ),
+    )
+    if oracle.math_glsl:
+        ctx.project.write(f"scenes/{scene_id}/v{version}.math.glsl", oracle.math_glsl)
+    for r in oracle.rejected:
+        print(f"[math] {scene_id}/{r.id} rifiutato: {r.reason}")
+    return oracle.math_glsl
+
+
+def with_math(ctx, scene_id: str, version: int, src: str) -> str:
+    """Concatena il math.glsl oracolo (v{version}, fallback v1) davanti allo shader."""
+    for v in (version, 1):
+        p = ctx.project.path / "scenes" / scene_id / f"v{v}.math.glsl"
+        if p.exists():
+            return p.read_text(encoding="utf-8") + "\n" + src
+    return src
 
 
 # ---------------------------------------------------------------- S4 compile + fixer
@@ -171,7 +206,7 @@ def s4_compile(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str,
     cur = src
     errors: list[str] = []
     for attempt in range(ctx.cfg.budget.max_fix_attempts + 1):
-        payload = mono_payload(spec, scene_id, cur, common, bpm)
+        payload = mono_payload(spec, scene_id, with_math(ctx, scene_id, version, cur), common, bpm)
         res = harness.load(payload)
         if res["ok"]:
             ctx.project.write(f"scenes/{scene_id}/v{version}.glsl", cur)
@@ -207,7 +242,7 @@ def s5_probe(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str,
     bpm = spec.timeline.bpm
     slot = next(s for s in spec.timeline.scenes if s.id == scene_id)
     dur = slot.bars * spec.timeline.beats_per_bar * 60 / bpm
-    payload = mono_payload(spec, scene_id, src, common, bpm)
+    payload = mono_payload(spec, scene_id, with_math(ctx, scene_id, version, src), common, bpm)
     pdir = ctx.project.path / "scenes" / scene_id / f"v{version}.probe"
     pdir.mkdir(parents=True, exist_ok=True)
 
@@ -325,6 +360,12 @@ def s7_revise(ctx, harness: Harness, spec: DemoSpec, scene: SceneBrief, style_sr
     new_src = env.glsl_blocks[0]
     new_version = version + 1
     ctx.project.write(f"scenes/{scene.id}/v{new_version}.glsl", new_src)
+    try:  # Fase 6: il revise può emettere nuovi math_requests
+        new_meta = ShaderSubmission.model_validate(env.json())
+        if new_meta.math_requests:
+            run_oracle_for(ctx, scene.id, new_version, new_meta.math_requests)
+    except Exception as exc:  # noqa: BLE001 - il meta è opzionale
+        print(f"[math] revise {scene.id}: nessun math_request ({exc})")
     ok, fixed, errors = s4_compile(ctx, harness, spec, scene.id, new_src, common, new_version)
     if not ok:
         return version, src  # tieni la vecchia se la nuova non compila
@@ -336,10 +377,14 @@ def s9_bundle(ctx, spec: DemoSpec, style_src: str, post: dict) -> dict:
     from ..bundle.build import build_payload_from_sources, write_bundle
 
     best_srcs: dict[str, str] = {}
+    math_srcs: dict[str, str] = {}
     for scene in spec.scenes:
         best = select_best(ctx.project.path / "scenes" / scene.id)
         v = best["version"]
         best_srcs[scene.id] = ctx.project.read(f"scenes/{scene.id}/{v}.glsl")
+        math_path = ctx.project.path / "scenes" / scene.id / f"{v}.math.glsl"
+        if math_path.exists():
+            math_srcs[scene.id] = math_path.read_text(encoding="utf-8")
 
     spec_dict = {
         "name": spec.title.lower().replace(" ", "-"),
@@ -364,7 +409,9 @@ def s9_bundle(ctx, spec: DemoSpec, style_src: str, post: dict) -> dict:
             for s, slot in zip(spec.scenes, spec.timeline.scenes)
         ],
     }
-    payload = build_payload_from_sources(spec_dict, best_srcs, style_src, do_minify=True)
+    payload = build_payload_from_sources(
+        spec_dict, best_srcs, style_src, do_minify=True, math_srcs=math_srcs
+    )
     name = spec_dict["name"]
     sizes = write_bundle(payload, ctx.project.path / "out", name)
     return {"payload": payload, "sizes": sizes, "name": name}

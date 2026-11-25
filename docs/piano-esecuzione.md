@@ -153,6 +153,7 @@ Nota: la Fase 3 (livello LLM) è quasi indipendente dal player e può essere svi
 ---
 
 ### Fase 6 — Oracolo matematico
+**Stato: ✅ M6 raggiunta.** `demogen/math/`: `safe_parse.py` (whitelist AST + eval in subprocess con RLIMIT_AS/CPU e timeout; cross-platform, su Windows solo timeout), `verify.py` (claim numerici: sdf via |grad f|≈1 + segno, lipschitz, periodic_path, easing, identity), `codegen.py` (AST safe → GLSL ES 3.00 deterministico, funzioni vettoriali → vec2/vec3), `oracle.py` (accepted/rejected con reason). Integrazione: `ShaderSubmission.math_requests` → S2/S7 `run_oracle_for` salva `vN.math.glsl` (solo accepted) e lo concatena in S4/S5/S9 (`with_math`). Prompt: sezione "Math oracle" in scene modern/retro. Test: 29 unit (parse malevoli rifiutati, claim veri/falsi, codegen, oracle E2E) + E2E fake con math_request vero (accettato, nel .demo) e falso (rifiutato).
 **Task**
 - `safe_parse.py`: whitelist token, subprocess con timeout 5 s + watchdog RSS (psutil, macOS), test di rifiuto (`__import__`, attributi, lambda, stringhe).
 - `verify.py`: tutti i tipi di claim (§11.2) con test veri/falsi noti.

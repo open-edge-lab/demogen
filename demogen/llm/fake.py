@@ -47,14 +47,38 @@ vec3 finalize(vec3 col, vec2 uv) {
 
 FAKE_SCENE = """void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
+    // funzione generata dall'oracolo matematico (math_request verificato)
+    float e = ease_smooth(clamp(iTime * 0.1, 0.0, 1.0));
     float v = sin(uv.x * 4.0 + iTime) + sin(uv.y * 4.0 - iTime * 1.3)
             + sin((uv.x + uv.y) * 3.0 + uBeatPhase * 6.2831);
-    vec3 col = cosPalette(0.5 + 0.15 * v + uBar * 0.05,
+    vec3 col = cosPalette(0.5 + 0.15 * v + uBar * 0.05 + e * 0.05,
                           vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.0, 0.33, 0.67));
     col *= 0.6 + 0.4 * beatPulse(uBeatPhase, 6.0);
     fragColor = vec4(finalize(col, uv), 1.0);
 }
 """
+
+# math_requests del fake: uno verificato (easing), uno volutamente falso (sdf senza regione negativa)
+FAKE_MATH_REQUESTS = [
+    {
+        "id": "ease_smooth",
+        "kind": "easing",
+        "description": "smoothstep-like easing f(0)=0 f(1)=1",
+        "inputs": {"t": "float"},
+        "output_signature": "float ease_smooth(float t)",
+        "expr": "t * t * (3.0 - 2.0 * t)",
+        "claim": {"domain": [[0.0, 1.0]], "tol": 1e-9},
+    },
+    {
+        "id": "sdf_falso",
+        "kind": "sdf",
+        "description": "claim falso: len2 non ha regione negativa",
+        "inputs": {"x": "float", "y": "float"},
+        "output_signature": "float sdf_falso(float x, float y)",
+        "expr": "len2(x, y)",
+        "claim": {"domain": [[-2.0, 2.0], [-2.0, 2.0]], "samples": 32},
+    },
+]
 
 
 def _fake_spec(prompt: str, duration_s: float, bpm: float, profile: str) -> dict:
@@ -124,7 +148,8 @@ class FakeLLM:
             )
         if step.startswith("draft"):
             return FakeResponse(
-                content='```json\n{"scene_id": "s1", "notes": "fake plasma", "perf_tier": "light"}'
+                content='```json\n{"scene_id": "s1", "notes": "fake plasma", "perf_tier": "light", '
+                '"math_requests": ' + json.dumps(FAKE_MATH_REQUESTS) + "}"
                 "\n```\n\n```glsl\n" + FAKE_SCENE + "```\n"
             )
         if step.startswith("fixer"):

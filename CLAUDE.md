@@ -12,7 +12,7 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - [x] Fase 4 — ✅ M4: metriche video/perf/flash + gate numerici + sheets (contact/burst/diff/perf) + `demogen inspect`/`calibrate`; harness con stats float (NaN/Inf) e cellSequence; 10 test sintetici gate + E2E inspect; pytest 31/31
 - [x] Fase 5 — ✅ M5 (CI): orchestratore S0–S9, prompt Jinja, FakeLLM `--fake`, CLI generate/resume/revise/report, E2E finto verde (~23 s)
 - [ ] Fase 2 — audio
-- [ ] Fase 6 — oracolo matematico
+- [x] Fase 6 — ✅ M6: oracolo matematico `demogen/math/` (safe_parse subprocess, verify sdf/lipschitz/period/easing, codegen GLSL), integrato in S2/S7/S9 via math_requests → `vN.math.glsl`
 - [ ] Fase 7 — distribuzione/export (posticipata)
 
 ## Comandi
