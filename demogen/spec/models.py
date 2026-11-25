@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 RenderProfile = Literal["modern", "retro"]
 PerfTier = Literal["light", "medium", "heavy"]
@@ -53,6 +53,28 @@ class DemoSpec(BaseModel):
     audio_brief: str = ""
     text: str | None = None  # scroller retro, max 256 caratteri ASCII
     avoid: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_slots(self) -> DemoSpec:
+        """Scene e slot di timeline si abbinano per id: stessi id, unici, durate sensate.
+
+        L'errore torna all'LLM nel repair loop di chat_structured."""
+        slot_ids = [s.id for s in self.timeline.scenes]
+        scene_ids = [s.id for s in self.scenes]
+        if not slot_ids:
+            raise ValueError("timeline.scenes vuota")
+        if len(set(slot_ids)) != len(slot_ids) or len(set(scene_ids)) != len(scene_ids):
+            raise ValueError(f"id di scena duplicati: timeline={slot_ids} scenes={scene_ids}")
+        if set(slot_ids) != set(scene_ids):
+            raise ValueError(
+                f"timeline.scenes e scenes devono avere gli stessi id: {sorted(slot_ids)} vs {sorted(scene_ids)}"
+            )
+        for s in self.timeline.scenes:
+            if s.bars <= 0 or s.start_bar < 0:
+                raise ValueError(f"slot {s.id}: bars deve essere > 0 e start_bar >= 0")
+            if not 0 <= s.transition_bars <= s.bars:
+                raise ValueError(f"slot {s.id}: transition_bars deve stare in [0, bars]")
+        return self
 
 
 class MathRequest(BaseModel):

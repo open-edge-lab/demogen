@@ -10,8 +10,8 @@ CI, docs). Contiene lo stato, i problemi ancora aperti e i batch di correzione d
 | A | Config / `api_key` (il WIP non committato) | ✅ fatto: commit `377ca05` sul branch `fix/review-batch-a`, suite 88/88 |
 | B | Integrità di test e CI | ✅ fatto: fixture `harness` (skip solo sull'avvio, fail con `CI=true`), golden obbligatori, sessione browser robusta; xfail strict per #21, #23, #32 |
 | C | Sicurezza (bundle HTML, path, sandbox dell'oracolo) | ✅ fatto: escape di titolo e payload, slug per i file, path e id confinati, runner `-I -c`, clamp dei claim |
-| D | Correttezza della pipeline LLM | da fare |
-| E | Gate del critic (flash, perf, flicker) | da fare |
+| D | Correttezza della pipeline LLM | ✅ fatto: budget persistito e applicato, output strutturato con fallback, resume per scena/artefatto, versioni max+1, `#line` per il fixer, flag di S0, blocker che bloccano |
+| E | Gate del critic (flash, perf, flicker) | 🟡 in parte: flash WCAG e perf (risoluzione, SwiftShader → info) in `60ff24c`; restano flicker/burst, loop seam, floor, audio |
 | F | Player TS | da fare |
 | G | Oracolo matematico | da fare |
 | H | Docs | da fare |

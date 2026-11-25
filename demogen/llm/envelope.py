@@ -8,9 +8,11 @@ import json
 import re
 from dataclasses import dataclass, field
 
-JSON_BLOCK = re.compile(r"```json\s*(.*?)```", re.DOTALL)
-GLSL_BLOCK = re.compile(r"```glsl\s*(.*?)```", re.DOTALL)
 ANY_BLOCK = re.compile(r"```(\w*)\s*(.*?)```", re.DOTALL)
+
+
+class EnvelopeError(ValueError):
+    """Envelope malformato: blocco json/glsl mancante o JSON non valido."""
 
 
 @dataclass
@@ -22,8 +24,25 @@ class Envelope:
 
     def json(self) -> dict:
         if self.json_text is None:
-            raise ValueError("Nessun blocco ```json nella risposta")
-        return json.loads(self.json_text)
+            raise EnvelopeError("Nessun blocco ```json nella risposta")
+        try:
+            data = json.loads(self.json_text)
+        except json.JSONDecodeError as e:
+            raise EnvelopeError(f"blocco ```json non valido: {e}") from e
+        if not isinstance(data, dict):
+            raise EnvelopeError("il blocco ```json deve essere un oggetto")
+        return data
+
+    def glsl(self, i: int = 0) -> str:
+        """i-esimo blocco ```glsl; ripiega su un blocco senza linguaggio che contiene mainImage."""
+        if i < len(self.glsl_blocks):
+            return self.glsl_blocks[i]
+        if i == 0:
+            for lang in ("glsl", "c", "cpp", "hlsl", "text"):
+                for body in self.other_blocks.get(lang, []):
+                    if "mainImage" in body:
+                        return body
+        raise EnvelopeError(f"Nessun blocco ```glsl #{i} nella risposta")
 
 
 def parse_envelope(text: str) -> Envelope:

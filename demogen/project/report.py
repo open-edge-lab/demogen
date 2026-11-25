@@ -31,7 +31,7 @@ def build_report(project_path: Path) -> str:
             if best_path.exists():
                 best = json.loads(best_path.read_text(encoding="utf-8"))
                 lines.append(f"- `{scene_dir.name}`: best={best.get('version')} score={best.get('score')}")
-            crits = sorted(scene_dir.glob("v*.critique.json"))
+            crits = sorted(scene_dir.glob("v*.critique.json"), key=lambda c: int(c.name[1:].split(".")[0]))
             for c in crits:
                 data = json.loads(c.read_text(encoding="utf-8"))
                 lines.append(
@@ -72,6 +72,8 @@ def build_report(project_path: Path) -> str:
     budget = state.get("budget_spent_usd")
     if budget is not None:
         lines += ["## Costo", "", f"- LLM: {budget:.4f} USD", ""]
+    if state.get("stopped"):
+        lines += ["## Stop anticipato", "", f"- {state['stopped']}", ""]
     out_dir = p / "out"
     if out_dir.exists():
         lines += ["## Artefatti", ""]

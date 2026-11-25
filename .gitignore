@@ -26,3 +26,4 @@ secrets/
 *.secret
 llm_calls/
 *.log
+.demogen_cache/

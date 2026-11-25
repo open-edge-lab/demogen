@@ -19,12 +19,14 @@ class Budget:
     started: float = field(default_factory=time.monotonic)
 
     @classmethod
-    def from_config(cls, cfg) -> Budget:
+    def from_config(cls, cfg, spent_usd: float = 0.0) -> Budget:
+        """`spent_usd`: spesa già fatta (da state.json) — al resume il budget non riparte da zero."""
         b = cfg.budget
         return cls(
             max_total_cost_usd=b.max_total_cost_usd,
             max_wall_minutes=b.max_wall_minutes,
             pricing=cfg.pricing,
+            spent_usd=float(spent_usd or 0.0),
         )
 
     def price(self, model: str) -> dict[str, float]:

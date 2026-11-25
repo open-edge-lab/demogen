@@ -7,6 +7,7 @@ import base64
 from pathlib import Path
 
 from ..config import Config
+from ..llm.budget import Budget
 from ..llm.capabilities import detect_capabilities
 from ..llm.client import LLMClient
 from ..llm.structured import chat_structured
@@ -27,10 +28,11 @@ def critique(
     metrics_json: str,
     log_dir: Path | None = None,
     client: LLMClient | None = None,
+    budget: Budget | None = None,
 ) -> CriticReport:
     """Invia prompt + fogli + metriche al critic e parsea il CriticReport."""
     if client is None:
-        client = LLMClient(cfg, role, log_dir=log_dir)
+        client = LLMClient(cfg, role, log_dir=log_dir, budget=budget)
     caps = detect_capabilities(cfg, role)
     if not caps.vision:
         raise RuntimeError(f"il ruolo {role} non ha vision: critica degradada solo sulle metriche non disponibile qui")

@@ -1,17 +1,25 @@
 # Role: fixer — fix compilation errors ONLY (no creative changes)
 
+{% if target == "style" %}
+The shared style/common code (palette, finalize(), helpers used by every scene) failed to compile:
+{% else %}
 Shader that failed to compile:
+{% endif %}
 
 ```glsl
 {{ src }}
 ```
 
-Compiler errors (mapped to the lines above):
+Compiler errors (line numbers refer to the code above, line 1 = first line):
 
 ```
 {{ errors }}
 ```
 
-Rules: return the FULL corrected shader body (only mainImage), changing the minimum to compile under GLSL ES 3.00 (float literals with decimal point, no implicit int→float, declared functions before use, constant loop bounds). No style changes, no new features.
+{% if target == "style" %}
+Rules: return the FULL corrected style code, changing the minimum to compile under GLSL ES 3.00 (float literals with decimal point, no implicit int→float, declared functions before use, constant loop bounds). Keep every function signature unchanged: the scenes call them. No style changes, no new features.
+{% else %}
+Rules: return the FULL corrected shader body (only mainImage and its helpers), changing the minimum to compile under GLSL ES 3.00 (float literals with decimal point, no implicit int→float, declared functions before use, constant loop bounds). No style changes, no new features.
+{% endif %}
 
 Reply with one ```glsl block only.

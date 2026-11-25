@@ -504,42 +504,49 @@ def generate(
     gpu: str = typer.Option("swiftshader", help="hardware | swiftshader"),
 ) -> None:
     """Pipeline completa: prompt → spec → style → shader per scena → compile → probe → critica → bundle."""
-    from .config import Config, load_config
-    from .llm.fake import fake_client_factory
-    from .orchestrator.pipeline import Pipeline
     from .project.store import Project, new_project_dir
 
-    if fake:
-        cfg = Config.model_validate({"providers": {}, "roles": {}})
-        factory = fake_client_factory
-    else:
-        cfg = load_config(None)
-        factory = None
     proj = Project(project or new_project_dir(prompt))
-    pipe = Pipeline(proj, cfg, gpu=gpu, client_factory=factory)
-    spec = pipe.run(prompt, duration_s=duration, bpm=bpm, profile=profile, loop=loop)
+    pipe = _pipeline(proj, gpu, fake)
+    spec = _guard(lambda: pipe.run(prompt, duration_s=duration, bpm=bpm, profile=profile, loop=loop))
     print(f"progetto: {proj.path}")
     print(f"spec: {spec.title} — {len(spec.scenes)} scene, {spec.duration_s:.1f}s, bpm {spec.timeline.bpm}")
     print(f"report: {proj.path / 'report.md'}")
+
+
+def _pipeline(proj, gpu: str, fake: bool):
+    from .config import Config, load_config
+    from .llm.fake import fake_client_factory
+    from .orchestrator.pipeline import Pipeline
+
+    if fake:
+        return Pipeline(proj, Config.model_validate({"providers": {}, "roles": {}}), gpu=gpu,
+                        client_factory=fake_client_factory)
+    return Pipeline(proj, load_config(None), gpu=gpu)
+
+
+def _guard(fn):
+    """Errori attesi della pipeline → messaggio leggibile ed exit code 1 (niente traceback)."""
+    from .orchestrator.steps import PipelineError
+
+    try:
+        return fn()
+    except PipelineError as e:
+        print(f"ERRORE: {e}", file=sys.stderr)
+        raise typer.Exit(1) from e
 
 
 @app.command()
 def resume(
     project: Path = typer.Argument(..., exists=True, help="Cartella del progetto"),
     gpu: str = typer.Option("swiftshader"),
+    fake: bool = typer.Option(False, help="LLM finto deterministico (smoke senza API reali)"),
 ) -> None:
-    """Riprende un progetto dallo step indicato in state.json."""
-    from .config import load_config
-    from .orchestrator.pipeline import Pipeline
+    """Riprende un progetto da state.json senza rifare step (e chiamate LLM) già completati."""
     from .project.store import Project
-    from .spec.models import DemoSpec
 
-    proj = Project(project)
-    cfg = load_config(None)
-    spec = DemoSpec.model_validate_json(proj.read("spec.json"))
-    pipe = Pipeline(proj, cfg, gpu=gpu)
-    pipe.run(spec.prompt, duration_s=spec.duration_s, bpm=spec.timeline.bpm,
-             profile=spec.profile, loop=spec.loop)
+    pipe = _pipeline(Project(project), gpu, fake)
+    _guard(pipe.resume)
 
 
 @app.command()
@@ -548,15 +555,13 @@ def revise(
     scene: str = typer.Option(..., help="id scena (s1, s2, ...)"),
     note: str = typer.Option(..., help="Nota di revisione (es. 'meno nebbia, più contrasto sul kick')"),
     gpu: str = typer.Option("swiftshader"),
+    fake: bool = typer.Option(False, help="LLM finto deterministico (smoke senza API reali)"),
 ) -> None:
-    """Revisione mirata di una scena con nota testuale, poi nuovo bundle."""
-    from .config import load_config
-    from .orchestrator.pipeline import Pipeline
+    """Revisione mirata di una scena con nota testuale (nuova versione max+1), poi nuovo bundle."""
     from .project.store import Project
 
-    proj = Project(project)
-    pipe = Pipeline(proj, load_config(None), gpu=gpu)
-    pipe.run_revise(scene, note)
+    pipe = _pipeline(Project(project), gpu, fake)
+    _guard(lambda: pipe.run_revise(scene, note))
 
 
 @app.command()

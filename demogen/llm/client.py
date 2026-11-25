@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import random
 import re
@@ -60,6 +61,29 @@ class LLMResponse:
     cost_usd: float | None
     latency_s: float
     raw: dict[str, Any]
+    finish_reason: str | None = None
+
+
+class LLMBadResponse(Exception):
+    """Risposta 200 senza `choices` (alcuni provider restituiscono un errore nel body): ritentabile."""
+
+
+class LLMTruncated(Exception):
+    """finish_reason == "length": la risposta è stata troncata (già pagata e loggata)."""
+
+    def __init__(self, response: LLMResponse) -> None:
+        super().__init__(
+            f"risposta troncata (finish_reason=length, {response.usage.get('completion_tokens', '?')} token)"
+        )
+        self.response = response
+
+
+def _backoff(attempt: int) -> float:
+    """Attesa prima del retry `attempt`: esponenziale (max 30 s) con jitter."""
+    return min(2**attempt, 30) * (0.5 + random.random())
+
+
+_LOG_NAME = re.compile(r"^(\d{4,})_")
 
 
 class LLMClient:
@@ -87,7 +111,8 @@ class LLMClient:
         self.max_retries = max_retries
         self.budget = budget
         self.log_dir = Path(log_dir) if log_dir else Path(config.log_dir)
-        self._counter = 0
+        # riparte dal massimo esistente: al resume i log precedenti non vengono sovrascritti
+        self._counter = self._max_log_index()
         http_kwargs = dict(
             base_url=self.base_url,
             api_key=self.api_key,
@@ -98,11 +123,22 @@ class LLMClient:
         self._client = OpenAI(**http_kwargs)
         self._aclient = AsyncOpenAI(**http_kwargs)
 
+    def _max_log_index(self) -> int:
+        if not self.log_dir.is_dir():
+            return 0
+        idx = [int(m.group(1)) for p in self.log_dir.glob("*.json") if (m := _LOG_NAME.match(p.name))]
+        return max(idx, default=0)
+
     def _next_log(self, step: str) -> Path:
-        self._counter += 1
         self.log_dir.mkdir(parents=True, exist_ok=True)
         safe_step = re.sub(r"[^\w.-]", "_", step)[:40]
-        return self.log_dir / f"{self._counter:04d}_{self.role}_{safe_step}.json"
+        # più client (ruoli) condividono la cartella: mai sovrascrivere un log esistente
+        self._counter = max(self._counter, self._max_log_index())
+        while True:
+            self._counter += 1
+            path = self.log_dir / f"{self._counter:04d}_{self.role}_{safe_step}.json"
+            if not path.exists():
+                return path
 
     def _log(self, path: Path, payload: dict) -> None:
         path.write_text(
@@ -133,7 +169,10 @@ class LLMClient:
         return kw
 
     def _extract(self, resp, latency_s: float) -> LLMResponse:
-        content = resp.choices[0].message.content or ""
+        if not getattr(resp, "choices", None):
+            raise LLMBadResponse(f"risposta senza choices: {redact(str(resp))[:300]}")
+        choice = resp.choices[0]
+        content = (choice.message.content if choice.message is not None else None) or ""
         usage = resp.usage.model_dump() if resp.usage is not None else {}
         cost: float | None = None
         if resp.usage is not None:
@@ -149,17 +188,20 @@ class LLMClient:
             cost_usd=cost,
             latency_s=latency_s,
             raw=resp.model_dump(),
+            finish_reason=getattr(choice, "finish_reason", None),
         )
 
-    def _finalize(self, r: LLMResponse, kw: dict, step: str, raw_req: dict) -> LLMResponse:
+    def _finalize(self, r: LLMResponse, kw: dict, step: str) -> LLMResponse:
+        """Addebita, logga e SOLO DOPO controlla budget/troncamento (la risposta è già pagata)."""
         if self.budget is not None:
+            # prezzo per l'id CONFIGURATO: resp.model può essere un alias/versione del provider
             r.cost_usd = self.budget.add(
-                r.model,
-                r.usage.get("prompt_tokens", 0),
-                r.usage.get("completion_tokens", 0),
+                self.model,
+                r.usage.get("prompt_tokens", 0) or 0,
+                r.usage.get("completion_tokens", 0) or 0,
                 r.cost_usd,
             )
-            self.budget.check()
+        raw_req = {"kwargs": {k: v for k, v in kw.items() if k != "messages"}}
         self._log(
             self._next_log(step),
             {
@@ -168,12 +210,33 @@ class LLMClient:
                 "request": redact(json.dumps(raw_req, default=str)),
                 "messages": _redact_messages(kw["messages"]),
                 "response": redact(r.content),
+                "finish_reason": r.finish_reason,
                 "usage": r.usage,
                 "cost_usd": r.cost_usd,
                 "latency_s": round(r.latency_s, 3),
             },
         )
+        if self.budget is not None:
+            self.budget.check()
+        if r.finish_reason == "length":
+            raise LLMTruncated(r)
         return r
+
+    def _precheck(self, kw: dict) -> None:
+        if self.budget is not None and not self.budget.can_afford(self.model, kw["max_tokens"]):
+            raise BudgetExceeded(
+                f"budget: una chiamata a {self.model} costerebbe più del residuo "
+                f"({self.budget.spent_usd:.4f}/{self.budget.max_total_cost_usd} USD)"
+            )
+
+    @staticmethod
+    def _retryable(e: Exception) -> bool:
+        if isinstance(e, (APITimeoutError, APIConnectionError, LLMBadResponse)):
+            return True
+        if isinstance(e, APIStatusError):
+            # 4xx non recuperabili (400, 401, 404...), tranne il rate limit
+            return e.status_code is None or e.status_code >= 500 or e.status_code == 429
+        return False
 
     def chat(
         self,
@@ -188,25 +251,19 @@ class LLMClient:
         kw = self._kwargs(messages, max_tokens, temperature, response_format, extra_body)
         last_err: Exception | None = None
         for attempt in range(self.max_retries + 1):
-            if self.budget is not None and not self.budget.can_afford(self.model, kw["max_tokens"]):
-                raise BudgetExceeded(
-                    f"budget: una chiamata a {self.model} costerebbe più del residuo "
-                    f"({self.budget.spent_usd:.4f}/{self.budget.max_total_cost_usd} USD)"
-                )
+            self._precheck(kw)
             t0 = time.monotonic()
             try:
                 resp = self._client.chat.completions.create(**kw)
                 r = self._extract(resp, time.monotonic() - t0)
-                raw_req = {"kwargs": {k: v for k, v in kw.items() if k != "messages"}}
-                return self._finalize(r, kw, step, raw_req)
-            except (APITimeoutError, APIConnectionError) as e:
+            except Exception as e:  # noqa: BLE001 - classificato da _retryable
+                if not self._retryable(e):
+                    raise
                 last_err = e
-            except APIStatusError as e:
-                if e.status_code is not None and e.status_code < 500 and e.status_code != 429:
-                    raise  # 4xx non recuperabili (es. 401, 400)
-                last_err = e
+            else:
+                return self._finalize(r, kw, step)
             if attempt < self.max_retries:
-                time.sleep(min(2**attempt, 30) * (0.5 + random.random()))
+                time.sleep(_backoff(attempt))
         assert last_err is not None
         raise last_err
 
@@ -223,20 +280,18 @@ class LLMClient:
         kw = self._kwargs(messages, max_tokens, temperature, response_format, extra_body)
         last_err: Exception | None = None
         for attempt in range(self.max_retries + 1):
-            if self.budget is not None and not self.budget.can_afford(self.model, kw["max_tokens"]):
-                raise BudgetExceeded("budget superato prima della chiamata")
+            self._precheck(kw)
             t0 = time.monotonic()
             try:
                 resp = await self._aclient.chat.completions.create(**kw)
                 r = self._extract(resp, time.monotonic() - t0)
-                return self._finalize(r, kw, step, {})
-            except (APITimeoutError, APIConnectionError) as e:
-                last_err = e
-            except APIStatusError as e:
-                if e.status_code is not None and e.status_code < 500 and e.status_code != 429:
+            except Exception as e:  # noqa: BLE001 - classificato da _retryable
+                if not self._retryable(e):
                     raise
                 last_err = e
+            else:
+                return self._finalize(r, kw, step)
             if attempt < self.max_retries:
-                time.sleep(min(2**attempt, 30) * (0.5 + random.random()))
+                await asyncio.sleep(_backoff(attempt))  # mai time.sleep: bloccherebbe le altre scene
         assert last_err is not None
         raise last_err

@@ -147,13 +147,20 @@ class FakeLLM:
                 '```glsl\n' + FAKE_STYLE + "```\n"
             )
         if step.startswith("draft"):
+            scene_id = step.split(":", 1)[1] if ":" in step else "s1"
             return FakeResponse(
-                content='```json\n{"scene_id": "s1", "notes": "fake plasma", "perf_tier": "light", '
+                content='```json\n{"scene_id": "' + scene_id + '", "notes": "fake plasma", "perf_tier": "light", '
                 '"math_requests": ' + json.dumps(FAKE_MATH_REQUESTS) + "}"
                 "\n```\n\n```glsl\n" + FAKE_SCENE + "```\n"
             )
         if step.startswith("fixer"):
             return FakeResponse(content="```glsl\n" + FAKE_SCENE + "```\n")
+        if step.startswith("revise"):
+            scene_id = step.split(":", 1)[1] if ":" in step else "s1"
+            return FakeResponse(
+                content='```json\n{"scene_id": "' + scene_id + '", "notes": "fake revise", '
+                '"perf_tier": "light"}\n```\n\n```glsl\n' + FAKE_SCENE + "```\n"
+            )
         if step.startswith("critique"):
             return FakeResponse(
                 content=json.dumps(
