@@ -139,6 +139,28 @@ def test_verify_sdf_punto_inside() -> None:
     assert not verify_claim(req("sdf", "len2(x, y) - 1.0", claim, inputs={"x": "float", "y": "float"})).ok
 
 
+def test_verify_sdf_anello_sottile_con_inside() -> None:
+    # toro sottile (tubo 0.05) nel run live: i campioni casuali non cadevano mai dentro
+    expr = "len2(len2(x, y) - 2.0, z) - 0.05"
+    inputs = {"x": "float", "y": "float", "z": "float"}
+    claim = {"domain": [[-3, 3], [-3, 3], [-1, 1]], "samples": 32}
+    r = verify_claim(req("sdf", expr, claim, inputs=inputs))
+    assert not r.ok and "inside" in r.detail  # suggerisce di indicare il punto interno
+    r2 = verify_claim(req("sdf", expr, claim | {"inside": [2.0, 0.0, 0.0]}, inputs=inputs))
+    assert r2.ok, r2.detail
+
+
+def test_math_request_senza_description_valida() -> None:
+    from demogen.spec.models import ShaderSubmission
+
+    meta = ShaderSubmission.model_validate({
+        "scene_id": "s1",
+        "math_requests": [{"id": "f", "kind": "easing", "inputs": {"t": "float"}, "expr": "t",
+                           "claim": {"domain": [[0, 1]]}}],
+    })
+    assert meta.math_requests[0].description == ""
+
+
 def test_verify_lipschitz_senza_punti_valutati_rifiutato() -> None:
     # sqrt di un argomento sempre negativo: nessun punto si valuta (prima: max_ratio=0 → accettato)
     r = verify_claim(req("lipschitz", "sqrt(-1.0 - x * x)", {"bound": 1.0, "domain": [[-1, 1]]},

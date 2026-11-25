@@ -250,19 +250,23 @@ def _verify_sdf(expr, claim, names, vars_, dom, n, tol_grad, rand_point) -> Veri
         return _too_few(kind, len(f0s), n)
     ring_vals = vals[n * stride:n * stride + n_ring]
     ring_ok = all(v is not None and v > 0 for v in ring_vals)
-    has_neg = any(v < 0 for v in f0s)
     inside_ok = True
     if inside_pt is not None:
         fi = vals[-1]
         inside_ok = fi is not None and fi < 0
+    # forme sottili (anelli, tubi): i campioni casuali possono non cadere mai dentro;
+    # un punto `inside` con f < 0 basta a provare che la regione negativa esiste
+    has_neg = any(v < 0 for v in f0s) or (inside_pt is not None and inside_ok)
     max_err = max(errs) if errs else None
     ok_sign = (not inside_neg) or (has_neg and ring_ok and inside_ok)
     ok_grad = max_err is not None and max_err <= tol_grad
     return VerifyResult(
         ok=ok_sign and ok_grad,
         kind=kind,
-        detail=(f"|grad|-1 max={max_err} su {len(errs)} punti vicino alla superficie ({'x'.join(spatial)}), "
-                f"segno ok={ok_sign} (dentro<0: {has_neg}, bordo>0: {ring_ok}, inside: {inside_ok})"),
+        detail=(f"|grad|-1 max={max_err} su {len(errs)} punti vicino alla superficie ({', '.join(spatial)}), "
+                f"segno ok={ok_sign} (dentro<0: {has_neg}, bordo>0: {ring_ok}, inside: {inside_ok})"
+                + ("" if has_neg or inside_pt is not None else
+                   " — nessun campione dentro la forma: per forme sottili indica `inside` nel claim")),
         max_err=max_err,
         n_samples=len(f0s),
         samples=f0s[:8],

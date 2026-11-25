@@ -16,6 +16,23 @@ CI, docs). Contiene lo stato, i problemi ancora aperti e i batch di correzione d
 | G | Oracolo matematico | ✅ fatto: codegen valido (compilato nel browser), arità e nomi riservati, semantica GLSL, verifica severa (SDF 3D, segno, coppie vicine, punti minimi), firma/id, rifiuti all'LLM, watchdog psutil, sympy rimosso; minify, treeshake (prototipi + conflitti), preprocessor, libreria (gnoise, hash, chip, calcAO). Non fatto: SourceMap collegata a `probe`/`inspect` (la pipeline rimappa con `#line`) |
 | H | Docs | ✅ fatto: README, CLAUDE.md, piano-esecuzione riallineato, player-web-library |
 
+### Verifica end-to-end (2026-11-25 sera)
+
+- CLI con `--fake`: `generate` → `.demo` + `.html`, 0 blocker; `resume` → `state.json` invariato, 0 chiamate;
+  `revise --scene s1` → `v2` accanto a `v1`, `best.json` aggiornato.
+- `inspect examples/timeline.json` su SwiftShader: flash a 30 fps su tutta la demo, 0 issue.
+- Bundle HTML in Chromium (Playwright MCP, servito su 127.0.0.1): canvas a tutto schermo, il click avvia audio e
+  video insieme, spazio = pausa con posizione conservata, ripresa dal punto giusto.
+- **Run live OpenRouter** (glm-5.3 orchestrator/math, glm-5.3-flash fixer, mistral-large-4 critic): 16 s, 4 scene
+  accettate, S9 senza blocker, **≈ 0,19 USD** in 9 minuti. Il gate flash ha bloccato s1 v1 (5/s) e v2 (4/s); la
+  revisione ha portato v3 sotto soglia. Problemi emersi e corretti dopo i batch:
+  - style troncato a 16k token (12,5k di ragionamento) → ritentativo col doppio dei token, `reasoning.effort`;
+  - spesa non salvata se la pipeline si interrompe → `state.json` salvato su qualsiasi errore;
+  - `gl.finish()` non aspetta la GPU in Chromium (0,1 ms misurati per frame da 500 ms) → sincronizzazione con
+    `readPixels`;
+  - `math_requests` senza `description` rifiutate in blocco → campo facoltativo;
+  - SDF di anelli sottili rifiutate (nessun campione dentro) → punto `inside` nel claim, chiesto dal prompt.
+
 Ordine consigliato: B → C → D → E → F → G → H. Un commit per batch (`fix(<area>): …`); rivedere con l'utente alla
 fine di ogni batch.
 

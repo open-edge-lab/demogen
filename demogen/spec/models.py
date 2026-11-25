@@ -95,7 +95,9 @@ class MathRequest(BaseModel):
         "sdf", "lipschitz", "intersection", "periodic_path", "easing",
         "parametric_curve", "attractor_params", "fourier", "identity", "other",
     ]
-    description: str
+    # facoltativa: l'esempio del prompt non la mette e i modelli la omettono spesso
+    # (nel run live 3 draft su 4 venivano rifiutati solo per questo)
+    description: str = ""
     inputs: dict[str, str] = Field(default_factory=dict)
     output_signature: str = ""
     # Fase 6 (oracolo): espressione python-safe verificabile + parametri del claim
