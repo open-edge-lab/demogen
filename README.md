@@ -137,7 +137,11 @@ text log.
 same browser and at the same resolution, so the check also holds on SwiftShader. Above 4×
 (`realtime.max_ref_ratio_p95`) the scene is blocking and the LLM has to lighten it; in the final bundle
 the excess stays a warning in the report. With `--gpu hardware` the absolute ms budgets on the real GPU
-apply as well. When a demo is slow the player goes down to 1/4 of the resolution.
+apply as well; the fixed cost of a measurement (an empty scene with the same rendering: GPU sync and the
+player's compositing, a few ms on some GPUs) is subtracted first, otherwise scaling it to the budget
+resolution failed even an empty scene. The budgets are set for the development machine (Apple Silicon):
+on a slower GPU a scene can be over budget there and still fine on the target. When a demo is slow the
+player goes down to 1/4 of the resolution.
 
 ### Other commands
 
@@ -303,7 +307,11 @@ solo log testuale.
 nello stesso browser e alla stessa risoluzione, quindi il controllo vale anche su SwiftShader.
 Oltre 4× (`realtime.max_ref_ratio_p95`) la scena è bloccante e l'LLM deve alleggerirla; nel bundle
 finale l'eccesso resta un avviso nel report. Con `--gpu hardware` valgono in più i budget in ms
-assoluti sulla GPU reale. Il player, se una demo è lenta, scende fino a 1/4 della risoluzione.
+assoluti sulla GPU reale; prima si toglie il costo fisso della misura (una scena vuota con la stessa resa:
+sincronizzazione con la GPU e composizione del player, qualche ms su alcune GPU), che scalato alla
+risoluzione del budget bocciava anche una scena vuota. I budget sono tarati sulla macchina di sviluppo
+(Apple Silicon): su una GPU più lenta una scena può sforare lì e andare bene sul target. Il player, se una
+demo è lenta, scende fino a 1/4 della risoluzione.
 
 ### Altri comandi
 

@@ -29,7 +29,7 @@ from ..critic.flash import analyze_flash
 from ..critic.gates import is_software_renderer, run_gates
 from ..critic.metrics_perf import perf_profile
 from ..critic.metrics_video import video_metrics
-from ..critic.perf_ref import add_ratios, measure_reference
+from ..critic.perf_ref import add_ratios, measure_baseline, measure_reference
 from ..critic.sheets import burst_sheet, contact_sheet, diff_heatmap
 from ..glsl.treeshake import load_library, treeshake
 from ..llm.budget import BudgetExceeded
@@ -587,6 +587,17 @@ def reference_ms(ctx, harness: Harness, res: tuple[int, int], renderer: str) -> 
     return cache[key]
 
 
+def baseline_ms(harness: Harness, res: tuple[int, int], payload: dict) -> float:
+    """Costo fisso di un fotogramma (scena vuota con la stessa resa): si toglie dai ms della scena.
+
+    Carica un altro payload nell'harness: va chiamata quando la scena non serve più."""
+    try:
+        return measure_baseline(harness, int(res[0]), int(res[1]), payload)
+    except Exception as e:  # noqa: BLE001 - senza scena vuota restano i ms lordi
+        print(f"[perf] baseline scene not measured: {e}")
+        return 0.0
+
+
 def capture_bursts(ctx, harness: Harness, dur: float) -> list[list[bytes]]:
     """`preview.bursts` raffiche di `preview.burst_len` frame CONSECUTIVI a `preview.fps`."""
     pv = ctx.cfg.preview
@@ -660,7 +671,9 @@ def s5_probe(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str, ver
     fl = probe_flash(ctx, harness, dur)
     bursts = capture_bursts(ctx, harness, dur)
     seam = capture_seam(ctx, harness, dur) if spec.loop and len(spec.timeline.scenes) == 1 else None
-    # per ultimo: il riferimento sostituisce la scena nell'harness (il retro rende a 320×180 interni)
+    # per ultimi: scena vuota e riferimento sostituiscono la scena nell'harness (il retro rende a
+    # 320×180 interni)
+    fixed = baseline_ms(harness, (rw, rh), payload)
     ref = reference_ms(ctx, harness, (320, 180) if prof_name == "retro" else (rw, rh), str(info["renderer"]))
 
     for i, p in enumerate(pngs):
@@ -677,6 +690,7 @@ def s5_probe(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str, ver
         gpu=str(info["renderer"]),
         target_fps=ctx.cfg.realtime.target_fps,
         floor_samples={float(k): v for k, v in floor["samples"].items()},
+        fixed_ms=fixed,
     )
     raw = json.dumps(payload).encode()
     metrics = {

@@ -411,6 +411,7 @@ def inspect(
     from .critic.gates import run_gates
     from .critic.metrics_perf import perf_profile
     from .critic.metrics_video import video_metrics
+    from .critic.perf_ref import measure_baseline
     from .critic.sheets import burst_sheet, contact_sheet, diff_heatmap, perf_chart
 
     if file.suffix == ".demo":
@@ -436,7 +437,8 @@ def inspect(
         pngs = h.capture(times, width, height)
         stats = h.scene_stats(times, width, height)
         with perf_lane():
-            prof = h.profile(times[:8], width, height, repeats=3)
+            # 5 ripetizioni (mediana): con 3 un picco isolato del giro di misura decideva il p95
+            prof = h.profile(times[:8], width, height, repeats=5)
         sf = cfg_obj.safety
         # flash WCAG su TUTTA la durata a >= 30 fps (a 10 fps uno strobo veloce andava in aliasing)
         cells = h.cell_sequence(0.0, duration, sf.flash_fps, 128, 72, grid=sf.flash_grid)
@@ -462,6 +464,9 @@ def inspect(
             audio_x = np.concatenate([np.asarray(b, dtype=np.float64) for b in raw])
             audio_m = _audio_metrics(audio_x, sr, float(payload["meta"]["bpm"]), channels=2)
 
+        # per ultimo: la scena vuota sostituisce il payload nell'harness
+        fixed_ms = measure_baseline(h, width, height, payload)
+
     def _np(p: bytes) -> np.ndarray:
         return np.asarray(Image.open(io.BytesIO(p)).convert("RGB"))
 
@@ -475,6 +480,7 @@ def inspect(
         method=str(prof["method"]),
         gpu=str(info["renderer"]),
         target_fps=cfg_obj.realtime.target_fps,
+        fixed_ms=fixed_ms,
     )
     fl = analyze_flash(
         cells, fps=sf.flash_fps, flash_max_per_s=sf.flash_max_per_s,
@@ -520,7 +526,7 @@ def inspect(
     print(f"  video: luma_mean={vm['luma_mean']:.3f} black={vm['black_ratio']:.3f} "
           f"nan={vm['nan_ratio']:.4f} flicker={vm['flicker_score']:.4f}")
     print(f"  perf:  p95={pf.p95_ms:.2f} ms  mean={pf.mean_ms:.2f} ms  "
-          f"load={pf.gpu_load_est:.0%}  ({pf.method})")
+          f"load={pf.gpu_load_est:.0%}  ({pf.method}, fixed cost {pf.fixed_ms:.2f} ms subtracted)")
     print(f"  flash: passed={fl.passed} max/s={fl.max_flashes_per_s:.1f} red={fl.red_flash_events}")
     if audio_m is not None:
         obe = audio_m["onset_vs_beat"]

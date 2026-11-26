@@ -340,7 +340,9 @@ class Pipeline:
             audio_m = None
             if payload.get("audio"):  # la musica spedita, nel bundle vero (minificato)
                 audio_m, _, _ = music.analyze_audio(h, dur, spec.timeline.bpm, spec.timeline.beats_per_bar)
-            ref = steps.reference_ms(self, h, (320, 180), str(info["renderer"]))  # per ultimo: cambia payload
+            # per ultimi: scena vuota e riferimento cambiano il payload nell'harness
+            fixed = steps.baseline_ms(h, (320, 180), payload)
+            ref = steps.reference_ms(self, h, (320, 180), str(info["renderer"]))
         frames = [np.asarray(Image.open(io.BytesIO(p)).convert("RGB")) for p in pngs]
         vm = video_metrics(frames, stats, loop=spec.loop, bursts=steps._np_bursts(bursts), seam=seam)
         pf = perf_profile(
@@ -348,6 +350,7 @@ class Pipeline:
             profile=spec.profile,
             resolution=(320, 180), method=str(prof["method"]),
             gpu=str(info["renderer"]), target_fps=self.cfg.realtime.target_fps,
+            fixed_ms=fixed,
         )
         raw = json.dumps(payload).encode()
         metrics = {

@@ -34,6 +34,9 @@ class PerfProfile(BaseModel):
     max_ms: float = 0.0
     mean_ms: float = 0.0
     floor_p95_ms: float | None = None
+    # costo fisso del giro di misura (sincronizzazione GPU, composizione del player), già tolto dai ms
+    # qui sopra: misurato su una scena che non fa niente (perf_ref.measure_baseline)
+    fixed_ms: float = 0.0
     gpu_load_est: float = 0.0  # mean_ms / (1000 / target_fps)
     hotspots: list[dict] = Field(default_factory=list)  # [{t, ms}]
 
