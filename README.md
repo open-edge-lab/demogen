@@ -150,8 +150,10 @@ uv run demogen calibrate --gpu hardware           # ms of the 4 example shaders 
 ```
 
 Ready-made examples in `examples/web/` open with a double click, for instance `whisker-hunt.html`
-(pixel-art cats, one hunting a moth; also the `cats` menu entry) and `penguin.html`; see
-`examples/web/README.md`. `play` and `inspect` on a single shader of a timeline use that timeline's
+(pixel-art cats, one hunting a moth; also the `cats` menu entry), `penguin.html` and
+`edge-horizon.html` (a live shader as the background of a website hero: dotted grid, icy planet drawn
+as a blueprint, network pulses, 128 s seamless loop, paused off screen; also the `horizon` menu entry);
+see `examples/web/README.md`. `play` and `inspect` on a single shader of a timeline use that timeline's
 common code, text and style.
 
 ### Tests
@@ -314,8 +316,10 @@ uv run demogen calibrate --gpu hardware           # ms dei 4 shader di esempio (
 ```
 
 Esempi pronti in `examples/web/`, da aprire con un doppio click: per esempio `whisker-hunt.html`
-(gatti in pixel art, uno caccia una falena; anche la voce `cats` del menu) e `penguin.html`; vedi
-`examples/web/README.md`. `play` e `inspect` su un singolo shader di una timeline usano common, testo e
+(gatti in pixel art, uno caccia una falena; anche la voce `cats` del menu), `penguin.html` e
+`edge-horizon.html` (uno shader vivo come sfondo della hero di un sito: griglia di puntini, pianeta
+ghiacciato disegnato come un progetto, impulsi di rete, loop di 128 s senza giunture, in pausa fuori
+schermo; anche la voce `horizon` del menu); vedi `examples/web/README.md`. `play` e `inspect` su un singolo shader di una timeline usano common, testo e
 stile di quella timeline.
 
 ### Test

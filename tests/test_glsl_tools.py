@@ -134,7 +134,8 @@ def test_esempi_minificati_compilano(harness) -> None:
     from demogen.bundle.build import build_payload
 
     examples = Path(__file__).resolve().parents[1] / "examples"
-    for spec in ("timeline.json", "audio_chip.timeline.json", "penguin.timeline.json", "whisker_hunt.timeline.json"):
+    for spec in ("timeline.json", "audio_chip.timeline.json", "penguin.timeline.json", "whisker_hunt.timeline.json",
+                 "edge_horizon.timeline.json"):
         payload = build_payload(json.loads((examples / spec).read_text(encoding="utf-8")), examples, do_minify=True)
         res = harness.load(payload)
         assert res["ok"], f"{spec}: " + "\n".join(res["errors"])[:1500]

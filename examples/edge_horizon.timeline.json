@@ -1,0 +1,12 @@
+{
+  "name": "edge-horizon",
+  "bpm": 120,
+  "beats_per_bar": 4,
+  "loop": true,
+  "common": "edge_horizon_common.glsl",
+  "render": { "profile": "modern" },
+  "quality": { "target_fps": 60, "min_scale": 0.5 },
+  "scenes": [
+    { "id": "horizon", "src": "shaders/edge_horizon.glsl", "start_bar": 0, "bars": 64, "transition_in": "cut", "transition_bars": 0 }
+  ]
+}

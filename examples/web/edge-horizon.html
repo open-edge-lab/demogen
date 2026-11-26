@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>demogen · edge horizon (live hero background)</title>
+  <!--
+    Scena "edge horizon" come sfondo vivo di una hero, nello stile di openedge.consulting:
+    fondo slate-950, griglia di puntini al 6%, ciano #22D3EE con accenti rosa #EC4899, pianeta in basso.
+    Sorgenti: examples/edge_horizon.timeline.json + examples/edge_horizon_common.glsl +
+    examples/shaders/edge_horizon.glsl. Il payload inline si rigenera come spiegato in examples/web/README.md.
+  -->
+  <style>
+    :root { --bg: #020617; --bg2: #0f172a; --cyan: #22d3ee; --cyan-btn: #06b6d4; --pink: #ec4899;
+            --line: rgba(148, 163, 184, .3); --muted: #9ca3af; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: #fff; font: 16px/1.6 Inter, system-ui, sans-serif; }
+    nav { position: fixed; inset: 0 0 auto 0; height: 64px; z-index: 10; display: flex; align-items: center;
+          justify-content: space-between; padding: 0 clamp(16px, 7vw, 108px);
+          background: rgba(2, 6, 23, .8); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(148, 163, 184, .15); }
+    nav .brand { color: var(--cyan); font-weight: 600; letter-spacing: -.02em; }
+    nav a { color: #e5e7eb; text-decoration: none; margin-left: 28px; font-size: 15px; }
+    nav a.cta { background: var(--cyan-btn); color: #fff; padding: 8px 16px; border-radius: 6px; font-weight: 600; }
+
+    /* La hero: il player riempie la sezione sotto ai contenuti ed è solo decorativo. */
+    .hero { position: relative; min-height: 100vh; display: grid; place-items: center; overflow: hidden;
+            padding: 64px 24px 18vh; background: var(--bg); }
+    .hero demogen-player { position: absolute; inset: 0; z-index: 0; display: block; pointer-events: none; }
+    .hero .content { position: relative; z-index: 1; text-align: center; max-width: 900px; }
+    .hero h1 { margin: 0; font-size: clamp(40px, 6.5vw, 72px); line-height: 1.05; letter-spacing: -.03em; font-weight: 600; }
+    .hero p { margin: 16px 0 36px; font-size: clamp(18px, 2.2vw, 28px); color: #d1d5db; font-weight: 300; }
+    .btn { display: inline-block; padding: 14px 30px; border-radius: 8px; font-weight: 600; text-decoration: none;
+           margin: 0 6px 12px; }
+    .btn.primary { background: var(--cyan-btn); color: #fff; box-shadow: 0 8px 24px rgba(6, 182, 212, .25); }
+    .btn.ghost { border: 1px solid var(--line); color: #fff; background: rgba(2, 6, 23, .4); }
+
+    /* Sezione seguente come sul sito: slate-900 con la griglia di puntini CSS. */
+    .next { background: var(--bg2) radial-gradient(circle, rgba(255, 255, 255, .06) 1px, transparent 1px) 0 0 / 24px 24px;
+            padding: 96px clamp(16px, 7vw, 108px); }
+    .label { font: 12px/1 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase;
+             color: rgba(148, 163, 184, .6); }
+    .next h2 { font-size: 36px; margin: 12px 0 16px; letter-spacing: -.02em; }
+    .next p { color: var(--muted); max-width: 720px; }
+    .next code { font: 14px "IBM Plex Mono", ui-monospace, monospace; color: var(--cyan); }
+  </style>
+  <!-- IIFE classic: funziona anche da file:// -->
+  <script src="../../player/dist/demogen-player.min.js"></script>
+</head>
+<body>
+  <nav>
+    <span class="brand">Edge Horizon</span>
+    <span><a href="#how">How it works</a><a class="cta" href="#how">Get in touch</a></span>
+  </nav>
+
+  <section class="hero">
+    <demogen-player id="hero-bg" autoplay aria-hidden="true">
+      <script type="application/json">{"format":"demogen/1","meta":{"title":"edge-horizon","duration_s":128.0,"loop":true,"bpm":120.0,"beats_per_bar":4},"timeline":{"bpm":120.0,"beats_per_bar":4,"scenes":[{"id":"horizon","start_bar":0.0,"bars":64.0,"transition_in":"cut","transition_bars":0.0}]},"common":"float bayer4(vec2 px){\nint x=int(mod(px.x,4.));\nint y=int(mod(px.y,4.));\nint i=x+y*4;\nconst int m[16]=int[16](0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5);\nreturn(float(m[i])+.5)/16.;\n}\nfloat hash21(vec2 p){\nuint h=floatBitsToUint(p.x)*2146503469u^floatBitsToUint(p.y)*1804288421u;\nh=((h>>16u)^h)*1103515245u;\nh=(h>>15u)^h;\nreturn float(h>>8u)*(1./16777216.);\n}\nint qOctaves(int maxOct){\nreturn int(float(maxOct)*mix(.5,1.,uQuality)+.5);\n}\nvec3 retroQuantize(vec3 col,const vec3 pal[16],int n,vec2 px){\nfloat d=bayer4(px)-.5;\nvec3 c=col+d*(1./float(n));\nint best=0;\nfloat bd=1e9;\nfor(int i=0;i<16;i++){\nif(i>=n)break;\nvec3 diff=c-pal[i];\nfloat dd=dot(diff,diff);\nif(dd<bd){bd=dd;best=i;}\n}\nreturn pal[best];\n}\nfloat wrapTime(float t,float period){\nreturn t-period*floor(t/period);\n}\nfloat loopT(float t,float period){\nreturn wrapTime(t,period)/period;\n}\nvec3 retroFinalize(vec3 col,vec2 uv,vec2 fragCoord,const vec3 pal[16],int n){\nvec3 q=retroQuantize(clamp(col,0.,1.),pal,n,fragCoord);\nfloat d=distance(uv,vec2(.5));\nreturn q*(1.-.25*smoothstep(.45,.9,d));\n}\nconst vec3 OE_BG=vec3(2.,6.,23.)/255.;\nconst vec3 OE_SLATE900=vec3(15.,23.,42.)/255.;\nconst vec3 OE_SLATE800=vec3(30.,41.,59.)/255.;\nconst vec3 OE_SLATE400=vec3(148.,163.,184.)/255.;\nconst vec3 OE_CYAN300=vec3(103.,232.,249.)/255.;\nconst vec3 OE_CYAN=vec3(34.,211.,238.)/255.;\nconst vec3 OE_CYAN500=vec3(6.,182.,212.)/255.;\nconst vec3 OE_SKY=vec3(14.,165.,233.)/255.;\nconst vec3 OE_PINK=vec3(236.,72.,153.)/255.;\nconst vec3 OE_PINK400=vec3(244.,114.,182.)/255.;\nconst vec3 PALETTE[16]=vec3[16](\nOE_BG,OE_SLATE900,OE_SLATE800,\nvec3(51.,65.,85.)/255.,\nvec3(71.,85.,105.)/255.,\nOE_SLATE400,\nvec3(203.,213.,225.)/255.,\nvec3(22.,78.,99.)/255.,\nvec3(14.,116.,144.)/255.,\nOE_CYAN500,OE_CYAN,OE_CYAN300,OE_SKY,OE_PINK,OE_PINK400,\nvec3(1.)\n);\nconst int PALETTE_N=16;\nvec3 finalize(vec3 col,vec2 uv){\n#ifdef PROFILE_RETRO\nreturn retroFinalize(col,uv,gl_FragCoord.xy,PALETTE,PALETTE_N);\n#else\nfloat d=hash21(gl_FragCoord.xy)-.5;\nreturn clamp(col+d/255.,0.,1.);\n#endif\n}\n","scenes":{"horizon":"const float EH_PERIOD=128.;\nconst float EH_TAU=6.28318530718;\nconst float EH_R=1.3;\nconst float EH_TOP=-.22;\nconst float EH_TILES=4.;\nconst vec3 EH_AXIS=vec3(0.,.33036,.94386);\nconst vec3 EH_LIGHT=vec3(-.22,.86,.46);\nconst float EH_GRID_ROWS=37.5;\nfloat ehNoise(vec2 p,float per){\nvec2 i=floor(p);\nvec2 f=fract(p);\nvec2 u=f*f*(3.-2.*f);\nfloat x0=mod(i.x,per);\nfloat x1=mod(i.x+1.,per);\nfloat a=hash21(vec2(x0,i.y));\nfloat b=hash21(vec2(x1,i.y));\nfloat c=hash21(vec2(x0,i.y+1.));\nfloat d=hash21(vec2(x1,i.y+1.));\nreturn mix(mix(a,b,u.x),mix(c,d,u.x),u.y);\n}\nvec2 ehFbm(vec2 p,float per){\nfloat s=0.;\nfloat rd=0.;\nfloat a=.5;\nfloat norm=0.;\nfloat rnorm=0.;\nint oct=qOctaves(5);\nfor(int i=0;i<5;i++){\nif(i>=oct)break;\nfloat v=ehNoise(p,per);\ns+=a*v;\nnorm+=a;\nif(i>=2){\nrd+=a*(1.-abs(2.*v-1.));\nrnorm+=a;\n}\np=p*2.+vec2(0.,5.17);\nper*=2.;\na*=.55;\n}\nreturn vec2(s/norm,rnorm>0.?rd/rnorm:.5);\n}\nfloat ehCraters(vec2 p,float per){\nvec2 i=floor(p);\nvec2 f=fract(p);\nfloat shade=0.;\nvec2 side=step(.5,f)*2.-1.;\nfor(int y=0;y<=1;y++){\nfor(int x=0;x<=1;x++){\nvec2 o=vec2(float(x),float(y))*side;\nvec2 key=vec2(mod(i.x+o.x,per),i.y+o.y);\nfloat h=hash21(key+3.7);\nif(h>.34)continue;\nvec2 c=o+.5+(vec2(hash21(key+11.1),hash21(key+23.9))-.5)*.5;\nfloat r=.1+.9*h*h*3.;\nr=min(r,.42);\nvec2 v=(f-c)/r;\nfloat d=length(v);\nif(d>1.25)continue;\nfloat wall=1.-smoothstep(.55,1.,d);\nfloat lip=1.-smoothstep(0.,.22,abs(d-1.));\nfloat lit=v.y/max(d,1e-3)*smoothstep(.1,.6,d);\nshade+=wall*lit*.28+lip*(.16-.1*lit)-wall*.06;\n}\n}\nreturn shade;\n}\nvec2 ehSeg(vec2 p,vec2 a,vec2 b){\nvec2 pa=p-a;\nvec2 ba=b-a;\nfloat t=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);\nreturn vec2(length(pa-ba*t),t);\n}\nconst vec2 EH_NODE[8]=vec2[8](\nvec2(.04,.32),vec2(.19,.45),vec2(.36,.3),vec2(.53,.5),\nvec2(.7,.36),vec2(.86,.47),vec2(1.04,.32),vec2(1.19,.45));\nconst ivec2 EH_LINK[8]=ivec2[8](\nivec2(0,1),ivec2(1,2),ivec2(2,3),ivec2(3,4),ivec2(4,5),ivec2(5,6),ivec2(1,3),ivec2(6,7));\nconst int EH_LINK_SRC[8]=int[8](0,1,2,3,4,5,6,0);\nconst float EH_LINK_K[7]=float[7](5.,7.,6.,8.,5.,7.,6.);\nconst int EH_PINK_LINK=6;\nvec4 ehNet(vec2 tp,float pxm,float P){\nfloat lines=0.;\nfloat pulse=0.;\nfloat nodes=0.;\nfloat pink=0.;\nfor(int i=0;i<8;i++){\nvec2 a=EH_NODE[EH_LINK[i].x];\nvec2 b=EH_NODE[EH_LINK[i].y];\nvec2 st=ehSeg(tp,a,b);\nfloat dpx=st.x/pxm;\nif(dpx>12.)continue;\nlines=max(lines,1.-smoothstep(.3,1.3,dpx));\nint src=EH_LINK_SRC[i];\nfloat s=fract(EH_LINK_K[src]*P+float(src)*.137)*1.6;\nfloat lenPx=length(b-a)/pxm;\nfloat behind=(s-st.y)*lenPx;\nfloat head=behind>=0.?exp(-behind/28.):exp(behind/3.);\nfloat pl=head*exp(-dpx/1.6)*smoothstep(0.,.1,s)*(1.-smoothstep(1.,1.25,s));\npulse=max(pulse,pl);\nif(src==EH_PINK_LINK)pink=max(pink,pl);\n}\nfor(int i=0;i<8;i++){\nfloat dpx=length(tp-EH_NODE[i])/pxm;\nif(dpx>30.)continue;\nfloat breathe=.7+.3*sin(EH_TAU*(3.*P+float(i%6)*.31));\nnodes=max(nodes,((1.-smoothstep(1.6,2.6,dpx))+exp(-dpx/5.)*.35)*breathe);\n}\nreturn vec4(lines,pulse,nodes,pink);\n}\nvec3 ehSky(vec2 fragCoord,vec2 uv,vec2 res,float P,float dEdge){\nvec3 col=OE_BG;\nfloat cell=res.y/EH_GRID_ROWS;\nfloat css=24./cell;\nvec2 id=floor(fragCoord/cell);\nfloat dCss=length(fract(fragCoord/cell)-.5)*24.;\nfloat quiet=smoothstep(.55,1.15,length((uv-vec2(0.,.07))/vec2(.62,.24)));\nfloat fx=mix(.3,1.,quiet);\nfloat front=fract(8.*P)*1.25;\nfloat dw=(dEdge-front)/.03;\nfloat wave=0.;\nif(abs(dw)<4.){\nfloat life=1.-front/1.25;\nwave=exp(-dw*dw)*life*life*smoothstep(0.,.08,front)*fx;\n}\nfloat dotR=1.+.6*wave;\nfloat dotA=clamp((dotR-dCss)/css+.5,0.,1.);\ncol=mix(col,vec3(1.),.06*dotA);\ncol=mix(col,OE_CYAN300,.32*wave*dotA);\nfloat h=hash21(id+.5);\nif(h<.016){\nfloat h2=hash21(id+17.31);\nfloat k=2.+floor(h2*5.);\nfloat beat=pow(.5+.5*sin(EH_TAU*(k*P+h2)),6.);\nvec3 nodeCol=h2<.25?OE_PINK400:OE_CYAN;\nfloat core=clamp((1.6-dCss)/css+.5,0.,1.);\nfloat halo=exp(-dCss/4.)*.2;\ncol=mix(col,nodeCol,clamp(core*.6+halo,0.,1.)*beat*fx);\n}\nfloat d=max(dEdge,0.);\nfloat side=clamp(uv.x/(.5*res.x/res.y),-1.,1.);\nvec3 atm=mix(OE_SKY,OE_CYAN,exp(-d*40.));\natm=mix(atm,OE_PINK,smoothstep(.15,1.,side)*.45);\nfloat breath=1.+.08*sin(EH_TAU*2.*P);\ncol+=atm*(exp(-d*22.)*.4+exp(-d*6.)*.045)*breath;\nreturn col;\n}\nvec3 ehPlanet(vec3 n,vec2 m,vec2 g,vec2 gw,float pxm,vec2 uv,float P){\nvec2 fb=ehFbm(m*4.+vec2(0.,7.),4.);\nfloat maria=smoothstep(.36,.64,fb.x);\nfloat crinkle=smoothstep(.55,.95,fb.y);\nfloat albedo=.2+.5*maria+.3*crinkle;\nalbedo=clamp(albedo+ehCraters(m*vec2(12.,15.),12.),0.,1.);\nvec3 ice=mix(vec3(.05,.1,.17),vec3(.5,.68,.79),albedo);\nice=mix(ice,vec3(.68,.82,.9),pow(1.-n.z,1.5)*.4*smoothstep(.2,.7,albedo));\nfloat diff=max(dot(n,normalize(EH_LIGHT)),0.);\nvec3 col=ice*(.25+.8*diff);\ncol*=mix(vec3(.45,.62,.85),vec3(1.),smoothstep(-.5,-.27,uv.y));\nvec2 gd=abs(fract(g+.5)-.5)/max(gw,vec2(1e-5));\nfloat mer=1.-smoothstep(.2,1.1,gd.x);\nfloat par=(1.-smoothstep(.2,1.1,gd.y))*step(.4,fract(g.x*4.));\nfloat moire=1.-smoothstep(.12,.35,max(gw.x,gw.y));\ncol=mix(col,OE_CYAN300,max(mer,par)*moire*.2);\nvec2 tp=vec2(fract(m.x),m.y);\nif(tp.x<.12)tp.x+=1.;\nvec4 net=abs(tp.y-.4)<.1+30.*pxm?ehNet(tp,pxm,P):vec4(0.);\nfloat fade=smoothstep(.02,.2,n.z);\ncol=mix(col,OE_CYAN,net.x*.3*fade);\ncol=mix(col,OE_CYAN300,clamp(net.z,0.,1.)*.75*fade);\nvec3 pc=mix(OE_CYAN300,OE_PINK400,clamp(net.w/max(net.y,1e-4),0.,1.));\ncol+=pc*net.y*.85*fade;\nfloat rim=1.-n.z;\ncol+=OE_CYAN*pow(rim,6.)*.55+OE_SKY*pow(rim,2.5)*.1;\nreturn col;\n}\nvoid mainImage(out vec4 fragColor,in vec2 fragCoord){\nvec2 res=iResolution.xy;\nvec2 uv=(fragCoord-.5*res)/res.y;\nfloat P=loopT(iTime,EH_PERIOD);\nvec2 q=uv-vec2(0.,EH_TOP-EH_R);\nfloat dEdge=length(q)-EH_R;\nvec3 n=vec3(q,sqrt(max(EH_R*EH_R-dot(q,q),0.)))/EH_R;\nfloat lat=asin(clamp(dot(n,EH_AXIS),-1.,1.));\nfloat lon=atan(n.x,dot(n,vec3(0.,EH_AXIS.z,-EH_AXIS.y)));\nfloat tileA=EH_TAU/EH_TILES;\nvec2 m=vec2(lon/tileA-P,lat/tileA);\nvec2 g=m*vec2(6.,9.);\nvec2 gw=fwidth(g);\nfloat pxm=length(fwidth(m))*.6;\nvec3 col=ehSky(fragCoord,uv,res,P,dEdge);\nfloat inside=clamp(.5-dEdge*res.y,0.,1.);\nif(inside>0.)col=mix(col,ehPlanet(n,m,g,gw,pxm,uv,P),inside);\nfragColor=vec4(finalize(col,fragCoord/res),1.);\n}\n"},"render":{"profile":"modern"},"text":null,"post":{},"quality":{"target_fps":60,"min_scale":0.5}}</script>
+    </demogen-player>
+    <script>
+      // Con "riduci movimento" il player non parte: dopo il caricamento mostra un fotogramma fermo.
+      if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        document.getElementById("hero-bg").setAttribute("autoplay", "none");
+      }
+    </script>
+    <div class="content">
+      <h1>Edge Horizon</h1>
+      <p>A live WebGL background, rendered in real time by demogen</p>
+      <a class="btn primary" href="#how">Get in touch</a>
+      <a class="btn ghost" href="#how">Learn more</a>
+    </div>
+  </section>
+
+  <section class="next" id="how">
+    <div class="label">// How it works</div>
+    <h2>A shader instead of a picture</h2>
+    <p>The planet, the dotted grid and the network pulses are drawn by one fragment shader on the visitor's GPU:
+      a payload of about 3.5 KB gzip instead of an image or a video. The animation loops every 128 seconds
+      without a seam, pauses when the hero leaves the screen or the tab is hidden, and shows a still frame
+      when the system asks for reduced motion.</p>
+    <p>Sources: <code>examples/edge_horizon.timeline.json</code>, <code>examples/edge_horizon_common.glsl</code>,
+      <code>examples/shaders/edge_horizon.glsl</code>.</p>
+  </section>
+
+  <script>
+    // Il player non si ferma da solo quando non si vede: lo fa la pagina (risparmia GPU e batteria).
+    (() => {
+      const el = document.getElementById("hero-bg");
+      const still = matchMedia("(prefers-reduced-motion: reduce)");
+      const STILL_T = 40; // fotogramma fermo: impulsi sugli archi, nessuna onda dietro al titolo
+      el.addEventListener("demogen-ready", () => {
+        const player = el.player;
+        let onScreen = true;
+        const update = () => {
+          if (still.matches) {
+            player.pause();
+            player.seek(STILL_T);
+          } else if (onScreen && !document.hidden) {
+            player.play();
+          } else {
+            player.pause();
+          }
+        };
+        new IntersectionObserver((entries) => {
+          onScreen = entries[entries.length - 1].isIntersecting;
+          update();
+        }).observe(el);
+        document.addEventListener("visibilitychange", update);
+        still.addEventListener("change", update);
+        update();
+      });
+    })();
+  </script>
+</body>
+</html>

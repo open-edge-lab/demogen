@@ -716,6 +716,25 @@ def do_cats(ui: Ui) -> bool:
     return True
 
 
+HORIZON_PAGE = REPO / "examples" / "web" / "edge-horizon.html"
+PLAYER_IIFE = REPO / "player" / "dist" / "demogen-player.min.js"
+
+
+def do_horizon(ui: Ui) -> bool:
+    title("Website background: edge horizon (examples/web/edge-horizon.html)")
+    note("a hero section with a live shader behind the title: dotted grid, icy planet drawn as a blueprint, "
+         "network pulses; 128 s seamless loop")
+    note("it pauses when the hero leaves the screen and shows a still frame with reduced motion")
+    if not HORIZON_PAGE.exists():
+        note(f"{rel(HORIZON_PAGE)} missing", YELLOW)
+        return False
+    if not PLAYER_IIFE.exists():
+        note(f"{rel(PLAYER_IIFE)} missing: build the player first with the setup entry", YELLOW)
+        return False
+    open_path(HORIZON_PAGE)
+    return True
+
+
 def do_play(ui: Ui) -> bool:
     title("Play an example in realtime")
     f = ui.pick("Example:", examples(shaders=True), lambda x: rel(Path(x)))
@@ -970,6 +989,7 @@ ENTRIES: list[Entry] = [
     Entry("preview", "GPU", "MAIN", "Preview a scene of a project, also during a generation", do_preview),
     Entry("m1", "GPU", "EXAMPLES", "Main demo in realtime (examples/timeline.json)", do_play_main),
     Entry("cats", "GPU", "EXAMPLES", "Cat demo: whisker hunt, in the browser", do_cats),
+    Entry("horizon", "GPU", "EXAMPLES", "Website background: edge horizon, in the browser", do_horizon),
     Entry("play", "GPU", "EXAMPLES", "Play an example (timeline or shader)", do_play),
     Entry("inspect", "CPU+", "EXAMPLES", "Inspect an example: metrics, checks and sheets in out/", do_inspect),
     Entry("bundle", "CPU", "EXAMPLES", "Bundle an example (.demo + .html in out/)", do_bundle),

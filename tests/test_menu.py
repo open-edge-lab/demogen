@@ -48,8 +48,8 @@ def test_voci_numerate_in_ordine_e_nomi_unici() -> None:
     assert len(set(names)) == len(names)
     assert all(e.hw in menu.HW_STYLE for e in menu.ENTRIES)
     assert {"generate", "fake", "resume", "revise", "music", "budget", "config", "kill", "ps", "cats",
-            "plan", "preview"} <= set(names)
-    assert menu.find_entry("cats").section == "EXAMPLES"
+            "horizon", "plan", "preview"} <= set(names)
+    assert menu.find_entry("cats").section == menu.find_entry("horizon").section == "EXAMPLES"
     assert menu.find_entry("plan").section == menu.find_entry("preview").section == "MAIN"
 
 
@@ -58,6 +58,14 @@ def test_la_demo_dei_gatti_si_apre_dal_menu(quiet, monkeypatch) -> None:
     monkeypatch.setattr(menu, "open_path", opened.append)
     assert menu.run_entry(menu.find_entry("cats"), menu.Ui(interactive=False)) is True
     assert opened == [REPO / "examples" / "web" / "whisker-hunt.html"] and opened[0].exists()
+
+
+def test_lo_sfondo_edge_horizon_si_apre_dal_menu(quiet, monkeypatch) -> None:
+    opened: list[Path] = []
+    monkeypatch.setattr(menu, "open_path", opened.append)
+    monkeypatch.setattr(menu, "PLAYER_IIFE", REPO / "pyproject.toml")  # il player compilato non serve al test
+    assert menu.run_entry(menu.find_entry("horizon"), menu.Ui(interactive=False)) is True
+    assert opened == [REPO / "examples" / "web" / "edge-horizon.html"] and opened[0].exists()
 
 
 def test_ogni_esempio_del_menu_compila(harness) -> None:

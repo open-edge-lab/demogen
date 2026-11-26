@@ -44,6 +44,31 @@ npm run build --workspace player     # genera player/dist/ (esm + min.js + types
   `examples/shaders/whisker_*.glsl`; rigenerabile con
   `uv run demogen bundle examples/whisker_hunt.timeline.json --out /tmp/x && cp /tmp/x/whisker-hunt.html examples/web/ && cp /tmp/x/whisker-hunt.demo examples/web/whisker-hunt.demo.json`
 
+- `edge-horizon.html` — **"edge horizon"**, sfondo vivo per la hero di un sito nello stile di
+  openedge.consulting (fondo slate-950, griglia di puntini al 6%, ciano #22D3EE e accenti rosa #EC4899):
+  pianeta ghiacciato in basso disegnato come un progetto (meridiani, paralleli tratteggiati, rete di nodi
+  con impulsi), onde di dati che accendono i puntini, alone che vira al rosa a destra. Loop di 128 s
+  senza giunture, profilo modern, payload ~3,5 KB gzip inline; la pagina mette in pausa il player quando la
+  hero esce dallo schermo o la scheda è nascosta e, con `prefers-reduced-motion: reduce`, mostra un
+  fotogramma fermo (t = 40 s). Voce `horizon` del menu.
+  Sorgenti: `examples/edge_horizon.timeline.json` + `examples/edge_horizon_common.glsl` +
+  `examples/shaders/edge_horizon.glsl`. Per rigenerare il payload inline:
+  ```bash
+  uv run demogen bundle examples/edge_horizon.timeline.json --out out/eh
+  uv run python -c "import re,pathlib as p; f=p.Path('examples/web/edge-horizon.html'); d=p.Path('out/eh/edge-horizon.demo').read_text(encoding='utf-8').strip(); f.write_text(re.sub(r'(<demogen-player id=\"hero-bg\"[^>]*>\s*<script type=\"application/json\">).*?(</script>)', lambda m: m[1]+d+m[2], f.read_text(encoding='utf-8'), count=1, flags=re.S), encoding='utf-8')"
+  ```
+  Per metterla in un sito: copiare `player/dist/demogen-player.min.js` e `edge-horizon.demo`, poi
+  ```html
+  <section class="hero" style="position:relative; overflow:hidden">
+    <demogen-player id="hero-bg" src="/assets/edge-horizon.demo" autoplay aria-hidden="true"
+                    style="position:absolute; inset:0; z-index:0; display:block; pointer-events:none"></demogen-player>
+    <!-- contenuti della hero con position:relative; z-index:1 -->
+  </section>
+  <script src="/assets/demogen-player.min.js"></script>
+  ```
+  con lo script di pausa/riduci movimento in fondo a `edge-horizon.html` (con `src=` il payload arriva via
+  `fetch`, quindi serve HTTP, non `file://`).
+
 ## API esportata (`@demogen/player`)
 
 | Export | Uso |
