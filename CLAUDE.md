@@ -14,6 +14,7 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - [x] Fase 2 — ✅ M2: audio GPU a blocchi (`player/src/audio.ts`) + chip.glsl + metrics_audio + gate onset; demo `examples/audio_chip.timeline.json` (onset err 1.5 ms)
 - [x] Fase 6 — ✅ M6: oracolo matematico `demogen/math/` (safe_parse subprocess, verify sdf/lipschitz/period/easing, codegen GLSL), integrato in S2/S7/S9 via math_requests → `vN.math.glsl`
 - [ ] Fase 7 — distribuzione/export (posticipata)
+- [ ] Fase 9 — server MCP: shader e timeline scritti da un agente esterno via MCP, demogen solo motore (posticipata, `docs/piano-esecuzione.md`)
 
 ## Comandi
 

@@ -190,6 +190,24 @@ Size-coding 8k/4k, backend WebGPU, UI web locale, benchmark modelli, tier mobile
 
 ---
 
+### Fase 9 — Server MCP: demogen come motore puro (posticipata)
+**Idea**: un server MCP espone il motore a un agente esterno, che scrive shader, timeline e musica al posto
+dell'LLM integrato. demogen resta solo il motore (render, metriche, gate, bundle): l'LLM interno
+(`demogen/llm/`, orchestratore S0–S9) diventa facoltativo e lato demogen non si spende nulla in LLM.
+
+**Strumenti indicativi**
+- `validate_shader`: compilazione della scena con la libreria tree-shaked, errori con riga.
+- `render_frame` / `probe`: PNG di uno o più istanti + ms per fotogramma (GPU o SwiftShader).
+- `inspect`: metriche, gate (flash, nero, loop, perf) e fogli per la critica (contact/burst/diff/perf).
+- `list_glsl_library`: funzioni della libreria GLSL con firma e descrizione.
+- `math_verify`: oracolo matematico (SDF, Lipschitz, periodo, easing).
+- `bundle`: `.demo` + `.html` da una timeline.
+
+**Da decidere quando si parte**: trasporto (stdio vs HTTP), dove vivono i progetti scritti dall'agente,
+come restano validi i tetti di consumo e i gate esistenti.
+
+---
+
 ## 4. Decisioni aperte da chiudere (dal §23 del piano v2) — proposte di default
 
 | Decisione | Proposta di default da confermare |
