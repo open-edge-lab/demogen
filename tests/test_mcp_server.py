@@ -85,11 +85,17 @@ def test_agente_esterno_dal_codice_sbagliato_al_bundle(tmp_path: Path) -> None:
 
             # fuori dalla radice dell'agente non si legge niente: né il percorso passato alla tool né i
             # file a cui rimanda una timeline (scena, style, audio), il cui testo tornerebbe negli errori
-            for path in ("../secret.glsl", str(tmp_path.parent / "secret.glsl")):
+            # i percorsi di rete (UNC) si scartano come stringhe: resolve() su Windows aprirebbe una
+            # connessione SMB e manderebbe le credenziali NTLM a quel server
+            for path in ("../secret.glsl", str(tmp_path.parent / "secret.glsl"),
+                         "\\\\attacker.invalid\\share\\x.glsl", "//attacker.invalid/share/x.glsl"):
                 res = await c.call_tool("validate", {"path": path})
                 assert res.is_error and "outside the workspace root" in _text(res)
             for key, value in (("src", "../../secret.glsl"), ("common", "../secret.glsl"),
-                               ("audio", str(tmp_path.parent / "secret.glsl"))):
+                               ("audio", str(tmp_path.parent / "secret.glsl")),
+                               ("src", str(tmp_path / "shaders" / "s1.glsl")),  # assoluti mai, neanche dentro
+                               ("src", "\\\\attacker.invalid\\share\\x.glsl"),
+                               ("common", "//attacker.invalid/share/style.glsl")):
                 evil = json.loads(json.dumps(TIMELINE))
                 if key == "src":
                     evil["scenes"][0]["src"] = value

@@ -21,7 +21,7 @@ import re
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, TypeVar
 
 from mcp.server.mcpserver import Image, MCPServer
@@ -116,7 +116,16 @@ class Workspace:
         p = p.resolve()
         return p.is_relative_to(self.root) or p.is_relative_to(EXAMPLES.resolve())
 
+    @staticmethod
+    def is_network(path: str) -> bool:
+        """Percorso UNC o di dispositivo (\\\\server\\share, //server/share, \\\\?\\, \\\\.\\): va rifiutato
+        come stringa, PRIMA di resolve()/exists(), che su Windows aprirebbero una connessione SMB (e
+        manderebbero le credenziali NTLM a quel server)."""
+        return path.startswith(("\\\\", "//")) or PureWindowsPath(path).drive.startswith(("\\\\", "//"))
+
     def resolve(self, path: str) -> Path:
+        if self.is_network(path):
+            raise ToolError(f"{path}: network paths are outside the workspace root {self.root}")
         p = Path(path)
         p = (p if p.is_absolute() else self.root / p).resolve()
         if not self.allowed(p):
@@ -142,19 +151,24 @@ class Workspace:
         for ref in refs:
             if ref is None:
                 continue
-            if not isinstance(ref, str) or not self.allowed(tl.parent / ref):
-                raise ToolError(f"{self.rel(tl)}: {ref!r} is outside the workspace root {self.root}")
+            # solo percorsi relativi alla timeline (come gli #include del preprocessore): niente assoluti,
+            # unità o percorsi di rete, scartati come stringhe prima di toccare il filesystem
+            if (not isinstance(ref, str) or self.is_network(ref) or Path(ref).is_absolute()
+                    or PureWindowsPath(ref).anchor or not self.allowed(tl.parent / ref)):
+                raise ToolError(f"{self.rel(tl)}: {ref!r} is outside the workspace root {self.root} "
+                                "(only paths relative to the timeline)")
         return spec
 
     def nearby_style(self, shader: Path) -> Path:
         """Style di uno shader senza timeline: common.glsl vicino (dentro i confini) o quello degli esempi."""
         for cand in (shader.parent / "common.glsl", shader.parent.parent / "common.glsl"):
-            if cand.exists() and self.allowed(cand):
+            if self.allowed(cand) and cand.exists():
                 return cand
         return DEFAULT_STYLE
 
     def payload(self, p: Path) -> dict:
-        """Payload di un file già confinato, controllando anche i file a cui rimanda."""
+        """Payload di un file già confinato, controllando anche i file a cui rimanda. Si costruisce dallo
+        spec controllato, senza rileggere la timeline (cambiata nel frattempo aggirerebbe il controllo)."""
         if p.suffix == ".demo":  # sorgenti già dentro il payload: nessun file da leggere
             return payload_from_file(p)
         if p.suffix == ".json":
@@ -162,8 +176,15 @@ class Workspace:
             return build_payload(spec, p.parent)
         owner = owning_timeline(p)
         if owner is not None:
-            self.check_timeline(owner[0])
-            return payload_from_file(p)
+            tl = owner[0]
+            spec = self.check_timeline(tl)
+            target = p.resolve()
+            scene = next((s for s in spec.get("scenes", [])
+                          if isinstance(s, dict) and (tl.parent / s["src"]).resolve() == target), None)
+            if scene is None:
+                raise ToolError(f"{self.rel(tl)} changed while reading it: run the tool again")
+            one = {**scene, "start_bar": 0, "transition_in": "cut", "transition_bars": 0}
+            return build_payload({**spec, "loop": True, "scenes": [one]}, tl.parent)
         style = self.nearby_style(p)
         return inline_payload(p.read_text(encoding="utf-8"), style.read_text(encoding="utf-8"), seconds=32.0)
 
