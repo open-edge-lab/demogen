@@ -158,14 +158,25 @@ def open_player(sess: BrowserSession, payload: dict) -> dict:
 @app.command()
 def play(
     file: Path = typer.Argument(
-        ..., exists=True, readable=True, help=".glsl (single scene) or timeline.json (demo)"
+        ..., exists=True, readable=True,
+        help=".glsl (single scene), timeline.json (demo) or a project folder (with --scene)"
     ),
     gpu: str = typer.Option("auto", help="auto | hardware | swiftshader"),
     headless: bool = typer.Option(False, help="Start the browser headless"),
     bpm: float = typer.Option(120.0, help="BPM for a single shader"),
+    scene: str = typer.Option("", help="With a project folder: the scene to preview (s1, s2, ...), "
+                                       "also while the project is being generated"),
+    version: int = typer.Option(0, help="With --scene: the version to show (default: the best so far, "
+                                        "else the latest)"),
 ) -> None:
     """Realtime rendering in a browser window (local server on 127.0.0.1)."""
-    payload = _payload_from_file(file, bpm)
+    if file.is_dir():
+        from .orchestrator.preview import scene_preview_payload
+
+        payload, shown = _guard(lambda: scene_preview_payload(file, scene, version or None))
+        print(f"preview: scene {scene} v{shown} of {file} (in a loop, with the project's style and post)")
+    else:
+        payload = _payload_from_file(file, bpm)
     with BrowserSession(gpu=gpu, headless=headless) as sess:  # type: ignore[arg-type]
         info = open_player(sess, payload)
         print(f"renderer: {info['renderer']}  (gpu={gpu}, headless={headless})")
@@ -578,15 +589,23 @@ def generate(
     music: str = typer.Option("", "--music", help="Prompt for the music (genre, instruments, mood); "
                               "empty = from the demo prompt"),
     no_music: bool = typer.Option(False, "--no-music", help="Demo without a soundtrack"),
+    review_plan: bool = typer.Option(False, "--review-plan",
+                                     help="Stop after the plan (scenes, timing, palette: one LLM call) to read and "
+                                          "change it with `demogen plan`, then continue with `demogen resume`"),
 ) -> None:
     """Full pipeline: prompt -> spec -> style -> shaders and music -> compile -> probe -> critique -> bundle."""
+    from .orchestrator.plan import format_plan, is_paused_for_plan, next_steps
     from .project.store import Project, new_project_dir
 
     proj = Project(project or new_project_dir(prompt))
     pipe = _pipeline(proj, gpu, fake, max_cost)
     spec = _execute(lambda: pipe.run(prompt, duration_s=duration, bpm=bpm, profile=profile, loop=loop,
-                                     audio=not no_music, music=music),
+                                     audio=not no_music, music=music, pause_after_plan=review_plan),
                     "generate", plain, proj.path)
+    if is_paused_for_plan(proj.path):
+        print(format_plan(spec))
+        print(next_steps(proj.path, editable=True))
+        return
     print(f"project: {proj.path}")
     print(f"spec: {spec.title} — {len(spec.scenes)} scenes, {spec.duration_s:.1f}s, bpm {spec.timeline.bpm}")
     print(f"report: {proj.path / 'report.md'}")
@@ -658,6 +677,48 @@ def resume(
 
     pipe = _pipeline(Project(project), gpu, fake, max_cost)
     _execute(pipe.resume, "resume", plain, project)
+
+
+@app.command()
+def plan(
+    project: Path = typer.Argument(..., exists=True, file_okay=False, help="Project folder"),
+    scene: str = typer.Option("", help="Scene to change (s1, s2, ...)"),
+    title: str | None = typer.Option(None, help="New title of --scene"),
+    description: str | None = typer.Option(None, help="New description of --scene: what you see"),
+    motion: str | None = typer.Option(None, help="New motion of --scene: how it moves, how it follows the beat"),
+    note: str = typer.Option("", help="A change to the whole plan, applied by the LLM (one call)"),
+    fake: bool = typer.Option(False, help="Deterministic fake LLM for --note (smoke test, no real API)"),
+    max_cost: float | None = typer.Option(None, "--max-cost", help=MAX_COST_HELP),
+    hints: bool = typer.Option(True, "--hints/--no-hints", hidden=True,
+                               help="Print the next commands (the menu offers its own choices)"),
+) -> None:
+    """Show a project's plan (scenes, timing, palette) and change it before the drawing starts."""
+    from .orchestrator.plan import edit_plan, format_plan, load_plan, next_steps, plan_editable
+    from .project.store import Project
+
+    proj = Project(project)
+    fields = {"title": title, "description": description, "motion": motion}
+    edits = {k: v for k, v in fields.items() if v is not None}
+    if note and (scene or edits):
+        raise typer.BadParameter("use either --note (the LLM rewrites the plan) or --scene with "
+                                 "--title/--description/--motion (you change it), not both")
+    if edits and not scene:
+        raise typer.BadParameter("--title, --description and --motion need --scene")
+    if scene and not edits:
+        raise typer.BadParameter("--scene needs what to change: --title, --description or --motion")
+    if note:
+        pipe = _pipeline(proj, "swiftshader", fake, max_cost)
+        print("the LLM is rewriting the plan with your note...")
+        spec = _guard(lambda: pipe.replan(note))
+        print("plan updated\n")
+    elif scene:
+        spec = _guard(lambda: edit_plan(proj, scene, **edits))
+        print(f"plan updated: {', '.join(edits)} of {scene}\n")
+    else:
+        spec = _guard(lambda: load_plan(proj))
+    print(format_plan(spec))
+    if hints:
+        print(next_steps(proj.path, plan_editable(proj.load_state())))
 
 
 @app.command()

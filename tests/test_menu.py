@@ -47,8 +47,10 @@ def test_voci_numerate_in_ordine_e_nomi_unici() -> None:
     names = [e.name for e in menu.ENTRIES]
     assert len(set(names)) == len(names)
     assert all(e.hw in menu.HW_STYLE for e in menu.ENTRIES)
-    assert {"generate", "fake", "resume", "revise", "music", "budget", "config", "kill", "ps", "cats"} <= set(names)
+    assert {"generate", "fake", "resume", "revise", "music", "budget", "config", "kill", "ps", "cats",
+            "plan", "preview"} <= set(names)
     assert menu.find_entry("cats").section == "EXAMPLES"
+    assert menu.find_entry("plan").section == menu.find_entry("preview").section == "MAIN"
 
 
 def test_la_demo_dei_gatti_si_apre_dal_menu(quiet, monkeypatch) -> None:
@@ -158,6 +160,76 @@ def test_musica_di_un_progetto(quiet, calls, monkeypatch, tmp_path: Path) -> Non
     assert menu.do_music(ui)
     assert calls == [["music", str(proj), "--prompt", "acid techno"]]
     assert "current music: v2" in quiet.export_text()
+
+
+def _scripted(ui: menu.Ui, monkeypatch, answers: dict[str, list[str]]) -> None:
+    """Risposte in ordine per etichetta (prefisso); le altre domande prendono il default."""
+
+    def ask(label: str, default: str = "") -> str:
+        for k, vals in answers.items():
+            if label.startswith(k) and vals:
+                return vals.pop(0)
+        return default
+
+    monkeypatch.setattr(ui, "ask", ask)
+
+
+def test_genera_reale_con_revisione_del_piano(quiet, calls, monkeypatch) -> None:
+    cfg = Config.model_validate({"providers": {}, "roles": {}, "budget": {"max_total_cost_usd": 0.5}})
+    monkeypatch.setattr(menu, "config_status", lambda: (cfg, ""))
+    monkeypatch.setattr(menu, "paused_for_plan", lambda p: True)
+    ui = menu.Ui(interactive=False, yes=True)
+    _scripted(ui, monkeypatch, {"prompt": ["a cat hunting"]})
+    assert menu.do_generate(ui)
+    # generate stampa già il piano (niente seconda stampa); di default poi si continua
+    gen, resume = calls
+    assert "--review-plan" in gen and gen[gen.index("--max-cost") + 1] == "0.5"
+    proj = gen[gen.index("--project") + 1]
+    assert resume == ["resume", str(menu.REPO / proj), "--gpu", "swiftshader", "--max-cost", "0.5"]
+    out = quiet.export_text()
+    assert "plan review: stop after the plan" in out and "most of the cost comes later" in out
+
+
+def test_revisione_del_piano_modifica_e_nota(quiet, calls, monkeypatch, tmp_path: Path) -> None:
+    from tests.test_plan_review import _spec
+
+    proj = tmp_path / "p"
+    proj.mkdir()
+    (proj / "spec.json").write_text(_spec().model_dump_json(), encoding="utf-8")
+    ui = menu.Ui(interactive=False)
+    _scripted(ui, monkeypatch, {"plan (": ["edit", "edit", "note", "stop"], "scene (": ["s2", "s1"],
+                                "what to change": ["title", "motion"], "new title of s2": ['a "big" cat'],
+                                "new motion of s1": [""], "what should change?": ["black cat"]})
+    assert menu.review_plan(ui, proj, fake=True, gpu="swiftshader") is True
+    plan = ["plan", str(proj), "--no-hints"]
+    assert calls == [  # il piano si stampa una volta: all'inizio, poi dai comandi che lo cambiano
+        plan,
+        [*plan, "--scene", "s2", "--title", "a 'big' cat"],
+        # motion vuota: niente da cambiare, nessuna chiamata
+        [*plan, "--note", "black cat", "--fake"],
+    ]
+    assert "continue later with Resume" in quiet.export_text()
+
+
+def test_un_progetto_fermo_al_piano(quiet, calls, monkeypatch, tmp_path: Path) -> None:
+    proj = tmp_path / "p"
+    proj.mkdir()
+    (proj / "state.json").write_text(json.dumps({"done": ["S0"], "paused": "plan"}), encoding="utf-8")
+    assert "plan ready for review" in menu.project_label(proj)
+    monkeypatch.setattr(menu, "select_project", lambda ui: proj)
+    assert menu.do_resume(menu.Ui(interactive=False))  # il resume passa dalla revisione del piano
+    assert calls == [["plan", str(proj), "--no-hints"], ["resume", str(proj), "--gpu", "swiftshader"]]
+
+
+def test_anteprima_di_una_scena_dal_menu(quiet, calls, monkeypatch, tmp_path: Path) -> None:
+    from tests.test_plan_review import _drawn_project
+
+    proj = _drawn_project(tmp_path)
+    monkeypatch.setattr(menu, "select_project", lambda ui: proj)
+    assert menu.run_entry(menu.find_entry("preview"), menu.Ui(interactive=False))
+    assert calls == [["play", str(proj), "--scene", "s1", "--version", "1", "--gpu", "auto"]]
+    out = quiet.export_text()
+    assert "s1  Plasma: v1, v2 (best v1)" in out and "s2  Plasma variant: no shader yet" in out
 
 
 def test_lo_slug_del_progetto() -> None:

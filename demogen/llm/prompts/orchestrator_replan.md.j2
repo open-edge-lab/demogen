@@ -1,0 +1,11 @@
+# Role: orchestrator — change the DemoSpec as the user asks
+
+The user read the plan you wrote (your previous reply) before any scene was drawn, and asks for this change:
+
+Change requested by the user: {{ note }}
+
+Rewrite the WHOLE DemoSpec with the change applied. Keep everything the change does not mention exactly as it is: scene ids, titles, descriptions, timeline, palette, art direction, text. If the change touches a subject that appears in several scenes, apply it to every scene where it appears, so the subject stays described identically.
+
+The rules of the first message still hold: profile "{{ profile }}" for every scene (no per-scene profile), scenes contiguous on the timeline, duration_s = total_bars * beats_per_bar * 60 / bpm (max 120 s; keep about {{ duration_s }} s unless the change asks for another length).
+
+Return ONLY the DemoSpec JSON (schema: {{ schema_name }}). No prose.

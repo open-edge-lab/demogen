@@ -221,8 +221,7 @@ def apply_request(spec: DemoSpec, prompt: str, bpm: float, profile: str, loop: b
     return DemoSpec.model_validate(spec.model_dump())  # rivalida (slot/scene coerenti)
 
 
-def s0_brief(ctx, prompt: str, duration_s: float, bpm: float, profile: str, loop: bool | None) -> DemoSpec:
-    caps = ctx.caps("orchestrator")
+def _brief_messages(prompt: str, duration_s: float, bpm: float, profile: str, loop: bool | None) -> list[dict]:
     user = P.render(
         "orchestrator_brief.md.j2",
         prompt=prompt,
@@ -232,14 +231,36 @@ def s0_brief(ctx, prompt: str, duration_s: float, bpm: float, profile: str, loop
         loop=loop,
         schema_name="DemoSpec",
     )
-    msgs = [
+    return [
         {"role": "system", "content": P.system_prompt(bpm)},
         {"role": "user", "content": user},
     ]
-    spec = chat_structured(ctx.client("orchestrator"), msgs, DemoSpec, step="brief", caps=caps)
+
+
+def s0_brief(ctx, prompt: str, duration_s: float, bpm: float, profile: str, loop: bool | None) -> DemoSpec:
+    msgs = _brief_messages(prompt, duration_s, bpm, profile, loop)
+    spec = chat_structured(ctx.client("orchestrator"), msgs, DemoSpec, step="brief", caps=ctx.caps("orchestrator"))
     spec = apply_request(spec, prompt, bpm, profile, loop)
     ctx.project.write("spec.json", spec.model_dump_json(indent=1))
     return spec
+
+
+def s0_replan(ctx, spec: DemoSpec, note: str, req: dict) -> DemoSpec:
+    """S0 rifatto con una nota dell'utente sul piano già scritto (prima dello style).
+
+    La conversazione è quella del brief: le sue regole valgono ancora, il piano precedente è la
+    risposta dell'LLM e la nota è la richiesta successiva. I flag della CLI restano autoritativi."""
+    msgs = _brief_messages(req["prompt"], req["duration_s"], req["bpm"], req["profile"], req.get("loop"))
+    msgs += [
+        {"role": "assistant", "content": spec.model_dump_json(indent=1)},
+        {"role": "user", "content": P.render("orchestrator_replan.md.j2", note=note, profile=req["profile"],
+                                             duration_s=req["duration_s"], schema_name="DemoSpec")},
+    ]
+    new = chat_structured(ctx.client("orchestrator"), msgs, DemoSpec, step="brief:replan",
+                          caps=ctx.caps("orchestrator"))
+    new = apply_request(new, req["prompt"], req["bpm"], req["profile"], req.get("loop"))
+    ctx.project.write("spec.json", new.model_dump_json(indent=1))
+    return new
 
 
 # ---------------------------------------------------------------- S1 style

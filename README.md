@@ -39,7 +39,8 @@ The whole app is in one menu styled like the generation panel (`demogen/menu.py`
 if missing and starts it; it works the same on Windows, macOS and Linux). At the top: venv and player
 status, today's and this month's LLM spending against the caps, the models of each role, the detected GPU
 and leftover processes. Entries: generate (real LLM or `--fake`, with music and a per-run spending cap),
-resume, revise, music, report, open; examples (main demo in realtime, the cat demo, play, inspect, bundle, web pages);
+resume, plan, revise, music, report, open, preview; examples (main demo in realtime, the cat demo, play, inspect, bundle,
+web pages);
 setup, doctor, LLM config, spending caps, tests, calibrate; show and close demogen processes. Each entry
 is tagged `[GPU]` (realtime rendering: choppy without a GPU), `[CPU]` (same speed with or without a GPU)
 or `[CPU+]` (runs on CPU alone; a GPU speeds up the checks). With `--action` the questions take their
@@ -87,6 +88,11 @@ uv run demogen generate "..." --music "acid techno, four on the floor" # music d
 uv run demogen generate "..." --no-music --max-cost 0.5              # silent demo, per-run spending cap
 uv run demogen generate "..." --loop                                 # continuous loop (no flag: the prompt decides)
 uv run demogen generate "..." --profile retro                        # retro style (320x180, 16-color palette) for every scene
+uv run demogen generate "..." --review-plan                          # stops after the plan: read it, change it, then resume
+uv run demogen plan projects/tunnel                                   # shows the plan: scenes, timing, palette
+uv run demogen plan projects/tunnel --scene s1 --description "..."    # changes a scene yourself (also --title, --motion)
+uv run demogen plan projects/tunnel --note "the cat is black"         # the LLM rewrites the plan with your note (one call)
+uv run demogen play projects/tunnel --scene s2                        # preview of one scene, also during the generation
 uv run demogen music projects/tunnel --prompt "slow synthwave"       # (re)composes only the soundtrack
 uv run demogen resume projects/tunnel                                 # resumes without repeating the calls already made
 uv run demogen revise projects/tunnel --scene s2 --note "less fog, more contrast on the kick"
@@ -102,6 +108,18 @@ follows the window: when it is resized the player adapts resolution and graphics
 retro scenes (fixed internal resolution) keep their proportions with black bars. `resume`, `revise` and
 `music` also accept `--fake`. The style (`--profile modern|retro`, default modern) is the user's choice and
 applies to every scene: the LLM cannot change it scene by scene.
+
+**Plan review and previews.** The first step writes the plan in `spec.json`: scenes (what you see, how it
+moves), timing, palette, art direction. It is one cheap call; most of the cost comes later, while the
+scenes are drawn and judged. With `--review-plan` (in the menu: "review the plan first", yes by default)
+the generation stops there: `demogen plan` shows the plan, `--scene s1 --description/--title/--motion`
+changes a scene without calling the LLM, `--note "..."` asks the LLM to rewrite the plan (the CLI flags
+still win: duration, BPM, style, loop), and `demogen resume` draws it. The plan can change only before the
+style step; afterwards a scene changes with `revise`. `demogen play <project> --scene s1 [--version N]`
+plays one scene in a loop as it will look in the demo (project style, oracle functions, post-processing;
+default: the best version so far, else the latest), also while the generation is running: it only reads
+the project. The 16 frames the critic saw are in `scenes/<id>/vN.probe/contact.png`. In the menu: Plan
+and Preview (which also offers to open the frame sheet).
 
 **Music.** After the shaders, the `composer` role writes the soundtrack (`mainAudio` in GLSL, on the
 demo's BPM), driven by `--music` or, when missing, by the demo prompt. It is listened to automatically:
@@ -184,7 +202,7 @@ Tutta l'app è in un menu nello stile del pannello di generazione (`demogen/menu
 `scripts/run.mts`, in TypeScript eseguito da Node ≥ 22.18 senza build, trova uv, crea l'ambiente se manca
 e lo avvia; funziona uguale su Windows, macOS e Linux). In alto: stato di venv e player, spesa LLM di oggi e del
 mese sui tetti, modelli dei ruoli, GPU rilevata, processi rimasti aperti. Voci: generate (LLM reale o
-`--fake`, con musica e tetto di spesa del run), resume, revise, music, report, open; esempi (demo
+`--fake`, con musica e tetto di spesa del run), resume, plan, revise, music, report, open, preview; esempi (demo
 principale in tempo reale, demo dei gatti, play, inspect, bundle, pagine web); setup, doctor, config LLM, spending caps,
 test, calibrate; mostra e chiudi i processi di demogen. Ogni voce ha l'etichetta `[GPU]` (rendering in
 tempo reale: senza GPU va a scatti), `[CPU]` (stessa velocità con o senza GPU) o `[CPU+]` (va anche
@@ -233,6 +251,11 @@ uv run demogen generate "..." --music "acid techno, cassa dritta"    # musica gu
 uv run demogen generate "..." --no-music --max-cost 0.5              # demo muta, tetto di spesa del run
 uv run demogen generate "..." --loop                                 # loop continuo (senza flag: lo decide il prompt)
 uv run demogen generate "..." --profile retro                        # stile retro (320x180, palette a 16 colori) per tutte le scene
+uv run demogen generate "..." --review-plan                          # si ferma dopo il piano: lo leggi, lo cambi, poi resume
+uv run demogen plan projects/tunnel                                   # mostra il piano: scene, tempi, palette
+uv run demogen plan projects/tunnel --scene s1 --description "..."    # cambi tu una scena (anche --title, --motion)
+uv run demogen plan projects/tunnel --note "il gatto è nero"          # l'LLM riscrive il piano con la tua nota (una chiamata)
+uv run demogen play projects/tunnel --scene s2                        # anteprima di una scena, anche durante la generazione
 uv run demogen music projects/tunnel --prompt "synthwave lenta"      # (ri)compone solo la colonna sonora
 uv run demogen resume projects/tunnel                                 # riprende senza rifare le chiamate fatte
 uv run demogen revise projects/tunnel --scene s2 --note "meno nebbia, più contrasto sul kick"
@@ -248,6 +271,19 @@ su/giù). La pagina segue la finestra: ridimensionandola il player adatta risolu
 anche in pausa; le scene retro (risoluzione interna fissa) mantengono le proporzioni con bande nere.
 `resume`, `revise` e `music` accettano anche `--fake`. Lo stile (`--profile modern|retro`, default modern) è
 la scelta dell'utente e vale per tutte le scene: l'LLM non può cambiarlo scena per scena.
+
+**Revisione del piano e anteprime.** Il primo passo scrive il piano in `spec.json`: scene (cosa si vede,
+come si muove), tempi, palette, direzione artistica. È una chiamata economica; la maggior parte della
+spesa arriva dopo, mentre le scene vengono disegnate e giudicate. Con `--review-plan` (nel menu: "review
+the plan first", sì di default) la generazione si ferma lì: `demogen plan` mostra il piano, `--scene s1
+--description/--title/--motion` cambia una scena senza chiamare l'LLM, `--note "..."` chiede all'LLM di
+riscrivere il piano (i flag della CLI vincono comunque: durata, BPM, stile, loop) e `demogen resume` lo
+disegna. Il piano si cambia solo prima del passo dello stile; dopo, una scena si cambia con `revise`.
+`demogen play <progetto> --scene s1 [--version N]` mostra una scena in loop come apparirà nella demo
+(stile del progetto, funzioni dell'oracolo, post-processing; di default la versione migliore finora,
+altrimenti l'ultima), anche mentre la generazione è in corso: legge soltanto il progetto. I 16 fotogrammi
+visti dal critico sono in `scenes/<id>/vN.probe/contact.png`. Nel menu: Plan e Preview (che propone anche
+di aprire il foglio dei fotogrammi).
 
 **Musica.** Dopo gli shader il ruolo `composer` scrive la colonna sonora (`mainAudio` in GLSL, sul
 BPM della demo), guidata da `--music` o, se manca, dal prompt della demo. Viene ascoltata in

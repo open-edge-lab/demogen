@@ -5,7 +5,8 @@ state.json:
 - `done`: step globali completati (S0, S1, S2, S9);
 - `scenes`: {id: {"done": bool}} per il loop S4–S7 di ogni scena;
 - `budget_spent_usd`: spesa LLM, aggiornata a ogni salvataggio;
-- `stopped`: motivo di uno stop anticipato (es. budget esaurito).
+- `stopped`: motivo di uno stop anticipato (es. budget esaurito);
+- `paused`: "plan" se la run si è fermata dopo S0 per la revisione del piano (`generate --review-plan`).
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from ..project.report import build_report
 from ..project.store import Project
 from ..spec.models import DemoSpec
 from . import music, steps
+from .plan import PAUSE_PLAN, load_plan, require_editable
 from .selection import has_blocker, list_versions, load_issues, select_best
 from .steps import PipelineError
 
@@ -125,8 +127,12 @@ class Pipeline:
 
     # ------------------------------------------------------------ run
     def run(self, prompt: str, duration_s: float = 30, bpm: float = 128.0,
-            profile: str = "modern", loop: bool | None = None, audio: bool = True, music: str = "") -> DemoSpec:
-        """`audio`: genera anche la colonna sonora (passo SM); `music`: prompt musicale facoltativo."""
+            profile: str = "modern", loop: bool | None = None, audio: bool = True, music: str = "",
+            pause_after_plan: bool = False) -> DemoSpec:
+        """`audio`: genera anche la colonna sonora (passo SM); `music`: prompt musicale facoltativo.
+        `pause_after_plan`: si ferma dopo S0 (`state["paused"] = "plan"`) perché l'utente legga e
+        cambi il piano (`demogen plan`); `resume` riprende da S1. Non è salvato nella richiesta:
+        il resume non si ferma di nuovo."""
         state = self.project.load_state()
         state.setdefault("done", [])
         state.setdefault("scenes", {})
@@ -138,7 +144,7 @@ class Pipeline:
         req = state["request"]
         self._announce(req["prompt"])
         try:
-            return self._run_steps(state, req)
+            return self._run_steps(state, req, pause_after_plan)
         except BudgetExceeded as e:
             return self._stop_for_budget(state, e)
         except BaseException:
@@ -158,7 +164,7 @@ class Pipeline:
                    "profile": spec.profile, "loop": spec.loop, "audio": False}
         return self.run(**req)
 
-    def _run_steps(self, state: dict, req: dict) -> DemoSpec:
+    def _run_steps(self, state: dict, req: dict, pause_after_plan: bool = False) -> DemoSpec:
         done = set(state["done"])
 
         def mark(step: str) -> None:
@@ -179,6 +185,14 @@ class Pipeline:
                                   req["profile"], req["loop"])
             mark("S0")
         self._announce_spec(spec, {k for k, v in state["scenes"].items() if v.get("done")})
+
+        if pause_after_plan and "S1" not in done:
+            state["paused"] = PAUSE_PLAN
+            self._save(state)
+            progress.emit("pause", reason=PAUSE_PLAN, project=str(self.project.path))
+            return spec
+        if state.pop("paused", None) is not None:
+            self._save(state)
 
         if "S1" not in done or not self.project.exists("style.glsl"):
             start("S1", "global style: shared functions, palette and post-processing")
@@ -429,6 +443,23 @@ class Pipeline:
         self._save(state)
         progress.emit("step", step="S9", state="done")
         return True
+
+    # ------------------------------------------------------------ piano cambiato con una nota
+    def replan(self, note: str) -> DemoSpec:
+        """L'LLM riscrive il piano (S0) con la nota dell'utente: una chiamata, prima dello style."""
+        note = note.strip()
+        if not note:
+            raise PipelineError("replan: the note is empty")
+        state = require_editable(self.project)
+        spec = load_plan(self.project)
+        req = state.get("request") or {"prompt": spec.prompt, "duration_s": spec.duration_s,
+                                       "bpm": spec.timeline.bpm, "profile": spec.profile, "loop": spec.loop}
+        try:
+            return steps.s0_replan(self, spec, note, req)
+        except BudgetExceeded as e:
+            raise PipelineError(f"the plan was not changed: {e}") from e
+        finally:
+            self._save(state)  # la spesa della chiamata, anche se è fallita
 
     # ------------------------------------------------------------ revise mirato
     def run_revise(self, scene_id: str, note: str) -> None:

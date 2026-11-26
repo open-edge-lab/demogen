@@ -198,7 +198,25 @@ class FakeLLM:
             )
         return FakeResponse(content="OK")
 
+    @staticmethod
+    def _replan(messages) -> FakeResponse:
+        """Il piano precedente (risposta dell'assistente) con la nota dell'utente nella prima scena."""
+        prev = next(m["content"] for m in reversed(messages) if m.get("role") == "assistant")
+        note = ""
+        for m in messages:
+            c = m.get("content")
+            if isinstance(c, str) and "Change requested by the user:" in c:
+                note = c.split("Change requested by the user:", 1)[1].splitlines()[0].strip()
+        spec = json.loads(prev)
+        spec["scenes"][0]["description"] = f"{spec['scenes'][0]['description']} ({note})"
+        return FakeResponse(content=json.dumps(spec))
+
     def chat(self, messages, *, step: str = "", **kwargs: Any) -> FakeResponse:
+        if step == "brief:replan":
+            with progress.llm_call(self.role, "fake", step) as call:
+                self.calls.append(step)
+                call.update(cost=0.0, latency=0.0)
+                return self._replan(messages)
         hint = ""
         for m in messages:
             c = m.get("content")

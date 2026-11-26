@@ -355,6 +355,8 @@ def project_label(d: Path) -> str:
         status = "complete" if "S9" in (st.get("done") or []) else "incomplete"
         if st.get("stopped"):
             status = "stopped (" + str(st["stopped"])[:40] + ")"
+        if st.get("paused") == "plan":
+            status = "plan ready for review"
         label += f"  [{status}"
         if st.get("budget_spent_usd"):
             label += f", {float(st['budget_spent_usd']):.3f} USD"
@@ -469,6 +471,9 @@ def do_generate(ui: Ui, fake: bool = False) -> bool:
     if with_music == "yes":
         music_prompt = ui.ask("music prompt: genre, instruments, mood (empty = from the demo prompt)", "")
         music_prompt = music_prompt.replace('"', "'")
+    note("plan review: stop after the plan (scenes, timing, palette: one cheap call) to read it and change it")
+    note("before the drawing starts; most of the cost comes later, while the scenes are drawn and judged")
+    review = ui.choice("review the plan first", ["yes", "no"], "no" if fake else "yes")
     proj = ui.ask("project folder", f"projects/{datetime.now():%Y%m%d-%H%M%S}_{slug(prompt)}")
     args = ["generate", prompt, "--duration", f"{dur:g}", "--bpm", f"{bpm:g}", "--profile", prof, "--gpu", gpu,
             "--project", proj]
@@ -478,6 +483,9 @@ def do_generate(ui: Ui, fake: bool = False) -> bool:
         args.append("--no-music")
     elif music_prompt:
         args += ["--music", music_prompt]
+    if review == "yes":
+        args.append("--review-plan")
+    cap: float | None = None
     if fake:
         args.append("--fake")
     else:
@@ -487,9 +495,70 @@ def do_generate(ui: Ui, fake: bool = False) -> bool:
             note("cancelled")
             return False
     ok = run_cli(args)
+    path = REPO / proj if not Path(proj).is_absolute() else Path(proj)
+    if ok and paused_for_plan(path):
+        return review_plan(ui, path, fake=fake, gpu=gpu, cap=cap, show=False)  # generate l'ha appena stampato
     if ok:
-        open_project_demo(ui, REPO / proj if not Path(proj).is_absolute() else Path(proj))
+        open_project_demo(ui, path)
     return ok
+
+
+def paused_for_plan(project: Path) -> bool:
+    from .orchestrator.plan import is_paused_for_plan
+
+    return is_paused_for_plan(project)
+
+
+def plan_scenes(project: Path) -> list[dict]:
+    import json
+
+    try:
+        return list(json.loads((project / "spec.json").read_text(encoding="utf-8")).get("scenes") or [])
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+def review_plan(ui: Ui, project: Path, fake: bool, gpu: str, cap: float | None = None, show: bool = True) -> bool:
+    """Il piano scritto, poi: continua (resume), cambia una scena a mano, nota all'LLM, o fermati qui.
+
+    Il piano si stampa una volta sola: all'inizio (se `generate` non l'ha appena stampato, `show=False`)
+    e poi dal comando che lo cambia, che mostra già il piano aggiornato."""
+    plan = ["plan", str(project), "--no-hints"]  # i comandi successivi li offre il menu
+    llm = ["--fake"] if fake else []
+    cost = ["--max-cost", f"{cap:g}"] if cap is not None else []
+    title("The plan: read it, change it, then the drawing starts")
+    if show and not run_cli(plan):
+        return False
+    while True:
+        note("continue = draw it as it is; edit = rewrite a scene yourself (no LLM call);")
+        note("note = tell the LLM what to change in the plan (one call); stop = keep the plan, resume it later")
+        action = ui.choice("plan", ["continue", "edit", "note", "stop"], "continue")
+        if action == "continue":
+            ok = run_cli(["resume", str(project), "--gpu", gpu, *llm, *cost])
+            if ok:
+                open_project_demo(ui, project)
+            return ok
+        if action == "stop":
+            note(f"the plan is saved: continue later with Resume (or demogen resume {rel(project)})", GREEN)
+            return True
+        if action == "edit":
+            scenes = plan_scenes(project)
+            if not scenes:
+                note("the plan has no scenes", YELLOW)
+                continue
+            ids = [str(s.get("id")) for s in scenes]
+            sid = ui.choice("scene", ids, ids[0])
+            field = ui.choice("what to change", ["description", "motion", "title"], "description")
+            cur = str(next(s for s in scenes if str(s.get("id")) == sid).get(field) or "")
+            # niente testo attuale come default: è appena stampato nel piano, e Rich lo ripeterebbe intero
+            value = ui.ask(f"new {field} of {sid} (empty = keep the current one)", "").replace('"', "'")
+            if value and value != cur:
+                run_cli([*plan, "--scene", sid, f"--{field}", value])
+        else:
+            text = ui.ask("what should change? (e.g. the cat is black, add a scene where it sleeps; "
+                          "empty = cancel)", "").replace('"', "'")
+            if text:
+                run_cli([*plan, "--note", text, *llm, *cost])
 
 
 def do_resume(ui: Ui) -> bool:
@@ -498,7 +567,11 @@ def do_resume(ui: Ui) -> bool:
     if p is None:
         return False
     llm = ui.choice("LLM", ["real", "fake"], "real")
-    args = ["resume", str(p), "--gpu", render_check(ui)] + (["--fake"] if llm == "fake" else [])
+    gpu = render_check(ui)
+    if paused_for_plan(p):
+        note("this project stopped after the plan, waiting for your review")
+        return review_plan(ui, p, fake=llm == "fake", gpu=gpu)
+    args = ["resume", str(p), "--gpu", gpu] + (["--fake"] if llm == "fake" else [])
     ok = run_cli(args)
     if ok:
         open_project_demo(ui, p)
@@ -567,6 +640,50 @@ def do_report(ui: Ui) -> bool:
 
     console.print(Panel(Markdown(build_report(p)), border_style=PURPLE, box=box.ROUNDED))
     return True
+
+
+def do_plan(ui: Ui) -> bool:
+    title("Plan: read a project's plan (scenes, timing, palette) and change it before the drawing starts")
+    p = select_project(ui)
+    if p is None:
+        return False
+    if not paused_for_plan(p):
+        return run_cli(["plan", str(p)])
+    llm = ui.choice("LLM for notes and drawing", ["real", "fake"], "real")
+    return review_plan(ui, p, fake=llm == "fake", gpu=render_check(ui))
+
+
+def do_preview(ui: Ui) -> bool:
+    from .orchestrator.plan import PlanError
+    from .orchestrator.preview import describe, scene_versions
+
+    title("Preview a scene of a project in the browser (also while it is being generated)")
+    p = select_project(ui)
+    if p is None:
+        return False
+    try:
+        table = scene_versions(p)
+    except PlanError as e:
+        note(str(e), YELLOW)
+        return False
+    for sv in table:
+        note(describe(sv), SOFT)
+    ready = [sv for sv in table if sv.versions]
+    if not ready:
+        note("no scene has a shader yet: the drafts arrive after the plan and the style", YELLOW)
+        return False
+    sid = ui.choice("scene", [sv.id for sv in ready], ready[0].id)
+    sv = next(x for x in ready if x.id == sid)
+    ver = ui.choice("version", [f"v{v}" for v in sv.versions], f"v{sv.default}")
+    sheet = p / "scenes" / sid / f"{ver}.probe" / "contact.png"
+    if sheet.exists():
+        note(f"16 frames of {sid} {ver} (the ones the critic saw): {rel(sheet)}")
+        if ui.confirm("Open the frame sheet too?", False):
+            open_path(sheet)
+    note("auto = GPU if available; hardware = force the GPU; swiftshader = CPU only (stutters)")
+    gpu = ui.choice("renderer", ["auto", "hardware", "swiftshader"], "auto")
+    note("a browser window opens: close it to come back to the menu")
+    return run_cli(["play", str(p), "--scene", sid, "--version", ver[1:], "--gpu", gpu])
 
 
 def do_open(ui: Ui) -> bool:
@@ -845,10 +962,12 @@ ENTRIES: list[Entry] = [
     Entry("generate", "CPU+", "MAIN", "Generate a demo with the LLM (OpenRouter, paid)", lambda ui: do_generate(ui)),
     Entry("fake", "CPU+", "MAIN", "Generate a fake demo (--fake, no API)", lambda ui: do_generate(ui, fake=True)),
     Entry("resume", "CPU+", "MAIN", "Resume an interrupted project", do_resume),
+    Entry("plan", "CPU", "MAIN", "Plan: read a project's plan, change it before the drawing starts", do_plan),
     Entry("revise", "CPU+", "MAIN", "Revise a scene with a note", do_revise),
     Entry("music", "CPU+", "MAIN", "Music: (re)compose a project's soundtrack from a prompt", do_music),
     Entry("report", "CPU", "MAIN", "Show a project's report", do_report),
     Entry("open", "GPU", "MAIN", "Open a project's demo in the browser", do_open),
+    Entry("preview", "GPU", "MAIN", "Preview a scene of a project, also during a generation", do_preview),
     Entry("m1", "GPU", "EXAMPLES", "Main demo in realtime (examples/timeline.json)", do_play_main),
     Entry("cats", "GPU", "EXAMPLES", "Cat demo: whisker hunt, in the browser", do_cats),
     Entry("play", "GPU", "EXAMPLES", "Play an example (timeline or shader)", do_play),

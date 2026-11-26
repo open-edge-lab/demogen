@@ -126,6 +126,18 @@ def test_stop_per_budget() -> None:
     assert d.outcome == "budget" and "BUDGET STOP" in con.export_text()
 
 
+def test_pausa_dopo_il_piano() -> None:
+    con = _console(140)
+    with Dashboard("generate", console=con) as d:
+        progress.emit("pipeline.start", project="p/demo", prompt="cat", gpu="swiftshader", fake=True)
+        progress.emit("step", step="S0", state="done")
+        progress.emit("pause", reason="plan", project="p/demo")
+    out = con.export_text()
+    assert d.outcome == "paused" and "PLAN READY" in out
+    assert "demogen plan p/demo" in d.last and "demogen resume p/demo" in d.last
+    assert "COMPLETED" not in out
+
+
 def test_avanzamento_della_scena_non_torna_indietro() -> None:
     d = Dashboard(console=_console())
     _run_events(lambda ev, **kw: d.on_event(ev, kw))

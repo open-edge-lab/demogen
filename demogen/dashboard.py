@@ -68,6 +68,7 @@ OUTCOME = {
     "error": ("ERROR", RED),
     "interrupted": ("INTERRUPTED", YELLOW),
     "budget": ("BUDGET STOP", YELLOW),
+    "paused": ("PLAN READY", CYAN),
 }
 
 
@@ -178,6 +179,7 @@ class Dashboard:
         self.cap: float | None = None
         self.max_ref = 4.0
         self.stopped = ""
+        self.paused = ""  # "plan": la run si è fermata dopo S0 per la revisione del piano
         self.error: dict[str, Any] | None = None  # errore che ha fermato la pipeline (provider, pipeline)
         self.last = "powering up…"
         self.outcome: str | None = None
@@ -237,6 +239,9 @@ class Dashboard:
                 self.last = "demo ready ▸ " + str(Path(self.project) / "out") if self.project else "done"
             elif self.outcome == "budget":
                 self.last = f"spending cap reached: bundled the best versions so far ▸ {self.stopped}"
+            elif self.outcome == "paused":
+                p = self.project or "<project>"
+                self.last = f"plan ready ▸ read or change it: demogen plan {p}  ·  then: demogen resume {p}"
             elif self.outcome == "interrupted":
                 self.last = "interrupted ▸ continue from here with: demogen resume <project>"
             elif self.error:
@@ -257,7 +262,7 @@ class Dashboard:
 
     def _outcome(self, exc_type, exc) -> str:
         if exc_type is None or getattr(exc, "exit_code", 1) == 0:
-            return "budget" if self.stopped else "ok"
+            return "budget" if self.stopped else "paused" if self.paused else "ok"
         if issubclass(exc_type, KeyboardInterrupt):
             return "interrupted"
         return "error"
@@ -404,6 +409,10 @@ class Dashboard:
         self.error = dict(d)
         self.last = f"ERROR ▸ {d.get('title')}"
 
+    def _on_pause(self, d: dict[str, Any]) -> None:
+        self.paused = str(d.get("reason") or "plan")
+        self.last = "plan ready: the drawing waits for you"
+
     def _on_stop(self, d: dict[str, Any]) -> None:
         self.stopped = str(d.get("reason") or "")
         self.last = f"early stop ▸ {self.stopped}"
@@ -522,6 +531,7 @@ class Dashboard:
             None: self.step_detail,
             "ok": "all steps completed",
             "budget": "stopped by the spending cap",
+            "paused": "paused after the plan: read it, change it if you like, then resume",
             "interrupted": "stopped from the keyboard",
             "error": "stopped by an error",
         }[self.outcome]
