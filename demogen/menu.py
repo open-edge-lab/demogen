@@ -936,6 +936,22 @@ def process_table(items: list[dict]) -> None:
     note(f"{len(items)} processes, {sum(p['mb'] for p in items)} MB in total", SOFT)
 
 
+MCP_TOOLS = ("guide", "glsl_library", "validate", "render", "inspect", "verify_math", "bundle")
+
+
+def do_mcp(ui: Ui) -> bool:
+    title("MCP server: an external agent writes the demo, demogen is the engine")
+    note("the agent (Claude Code, Claude Desktop, any MCP client) writes shaders, style and timeline as files;")
+    note("demogen compiles, renders, measures (the same gates) and bundles them: no LLM and no spending here")
+    note("tools: " + ", ".join(MCP_TOOLS), SOFT)
+    note("Claude Code in this repository: .mcp.json already declares it (approve it once when asked)", SOFT)
+    note(f"another project: claude mcp add demogen -- uv --directory {REPO} run demogen mcp --root <project folder>",
+         SOFT)
+    note("by hand (stdio): uv run demogen mcp --root <project folder> [--gpu hardware|swiftshader]", SOFT)
+    note("outputs (frames, reports, bundles) go to <project folder>/out/mcp/")
+    return True
+
+
 def do_ps(ui: Ui) -> bool:
     title("Running demogen processes")
     process_table(demogen_processes())
@@ -1001,6 +1017,7 @@ ENTRIES: list[Entry] = [
     Entry("test", "CPU", "SETUP & TESTS", "Python tests (ruff + pytest)", do_tests),
     Entry("test-player", "CPU", "SETUP & TESTS", "Player tests (typecheck + vitest + build)", do_player_tests),
     Entry("calibrate", "GPU", "SETUP & TESTS", "Calibrate: ms of the example shaders on the GPU", do_calibrate),
+    Entry("mcp", "CPU", "SETUP & TESTS", "MCP server: connect an external agent (Claude Code...)", do_mcp),
     Entry("ps", "CPU", "PROCESSES", "Show the demogen processes still running", do_ps),
     Entry("kill", "CPU", "PROCESSES", "Close the demogen processes (browser, python, node)", do_kill),
 ]

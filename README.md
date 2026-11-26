@@ -160,6 +160,32 @@ as a blueprint, network pulses, 128 s seamless loop, paused off screen; also the
 see `examples/web/README.md`. `play` and `inspect` on a single shader of a timeline use that timeline's
 common code, text and style.
 
+### MCP server: an external agent writes the demo
+
+`demogen mcp` turns demogen into a pure engine: an agent (Claude Code, Claude Desktop, any MCP client)
+writes shaders, style and timeline as files, and demogen compiles, renders, measures and bundles them.
+No LLM runs on the demogen side, so there are no keys and no spending.
+
+| Tool | What it does |
+|---|---|
+| `guide` | workflow, file formats, the GLSL contract and the gates: the agent reads it first |
+| `glsl_library` | the library functions a scene can call without defining them (`query` filters) |
+| `validate` | compiles in the real player; errors come back as `file:line: message` |
+| `render` | frames at the given times, returned as one image (PNGs saved under `out/mcp/`) |
+| `inspect` | the gates of the pipeline: NaN, black, flicker, loop seam, WCAG flashes, perf, size |
+| `verify_math` | the math oracle: verified formulas (SDF, Lipschitz, period, easing) become GLSL |
+| `bundle` | `.demo` payload + standalone `.html` |
+
+```bash
+uv run demogen mcp --root <project folder> [--gpu hardware|swiftshader]   # stdio
+claude mcp add demogen -- uv --directory <demogen folder> run demogen mcp --root <project folder>
+```
+
+In this repository `.mcp.json` already declares the server for Claude Code (approve it once). Paths of
+the tools are relative to `--root` (use an absolute path) and cannot leave it; demogen's `examples/` can
+always be read. The browser opens at the first request and stays open (`--gpu hardware` falls back to
+SwiftShader when there is no GPU). Also the `mcp` menu entry.
+
 ### Tests
 
 ```bash
@@ -329,6 +355,32 @@ Esempi pronti in `examples/web/`, da aprire con un doppio click: per esempio `wh
 ghiacciato disegnato come un progetto, impulsi di rete, loop di 128 s senza giunture, in pausa fuori
 schermo; anche la voce `horizon` del menu); vedi `examples/web/README.md`. `play` e `inspect` su un singolo shader di una timeline usano common, testo e
 stile di quella timeline.
+
+### Server MCP: la demo la scrive un agente esterno
+
+`demogen mcp` fa di demogen un motore puro: un agente (Claude Code, Claude Desktop, qualunque client
+MCP) scrive shader, style e timeline come file, e demogen li compila, li rende, li misura e ne fa il
+bundle. Dal lato di demogen non gira nessun LLM, quindi niente chiavi e niente spesa.
+
+| Strumento | Cosa fa |
+|---|---|
+| `guide` | flusso di lavoro, formato dei file, contratto GLSL e gate: l'agente la legge per prima |
+| `glsl_library` | le funzioni della libreria che una scena può chiamare senza definirle (`query` filtra) |
+| `validate` | compila nel player vero; gli errori tornano come `file:riga: messaggio` |
+| `render` | fotogrammi ai tempi chiesti, in un'unica immagine (i PNG restano in `out/mcp/`) |
+| `inspect` | i gate della pipeline: NaN, nero, sfarfallio, giunta del loop, flash WCAG, perf, dimensione |
+| `verify_math` | l'oracolo matematico: le formule verificate (SDF, Lipschitz, periodo, easing) diventano GLSL |
+| `bundle` | payload `.demo` + `.html` autonomo |
+
+```bash
+uv run demogen mcp --root <cartella del progetto> [--gpu hardware|swiftshader]   # stdio
+claude mcp add demogen -- uv --directory <cartella di demogen> run demogen mcp --root <cartella del progetto>
+```
+
+In questo repository `.mcp.json` dichiara già il server per Claude Code (va approvato una volta). I
+percorsi degli strumenti sono relativi a `--root` (meglio un percorso assoluto) e non ne possono uscire;
+gli `examples/` di demogen si leggono sempre. Il browser si apre alla prima richiesta e resta aperto
+(`--gpu hardware` ripiega su SwiftShader se manca la GPU). Anche la voce `mcp` del menu.
 
 ### Test
 

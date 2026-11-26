@@ -190,21 +190,31 @@ Size-coding 8k/4k, backend WebGPU, UI web locale, benchmark modelli, tier mobile
 
 ---
 
-### Fase 9 — Server MCP: demogen come motore puro (posticipata)
+### Fase 9 — Server MCP: demogen come motore puro ✅
 **Idea**: un server MCP espone il motore a un agente esterno, che scrive shader, timeline e musica al posto
 dell'LLM integrato. demogen resta solo il motore (render, metriche, gate, bundle): l'LLM interno
 (`demogen/llm/`, orchestratore S0–S9) diventa facoltativo e lato demogen non si spende nulla in LLM.
 
-**Strumenti indicativi**
-- `validate_shader`: compilazione della scena con la libreria tree-shaked, errori con riga.
-- `render_frame` / `probe`: PNG di uno o più istanti + ms per fotogramma (GPU o SwiftShader).
-- `inspect`: metriche, gate (flash, nero, loop, perf) e fogli per la critica (contact/burst/diff/perf).
-- `list_glsl_library`: funzioni della libreria GLSL con firma e descrizione.
-- `math_verify`: oracolo matematico (SDF, Lipschitz, periodo, easing).
-- `bundle`: `.demo` + `.html` da una timeline.
+**Fatto** (`demogen/mcp_server.py`, comando `demogen mcp`, SDK `mcp` v2):
+- `guide`: flusso, formato di timeline/style/scene, contratto GLSL (lo stesso del prompt della pipeline,
+  senza l'envelope) e gate con le soglie della config.
+- `glsl_library(query)`: riferimento API della libreria, filtrabile.
+- `validate`: ogni scena compilata da sola, non minificata e con `#line`, poi il bundle minificato;
+  errori `file:riga: messaggio`.
+- `render`: fotogrammi in un'unica immagine JPEG per l'agente, PNG su disco.
+- `inspect`: le misure e i gate di `demogen inspect` (`demogen/engine.py`, codice comune con la CLI).
+- `verify_math`: oracolo matematico, le richieste accettate tornano come funzioni GLSL.
+- `bundle`: `.demo` + `.html`.
 
-**Da decidere quando si parte**: trasporto (stdio vs HTTP), dove vivono i progetti scritti dall'agente,
-come restano validi i tetti di consumo e i gate esistenti.
+**Decisioni**: trasporto stdio (Claude Code, Claude Desktop); i progetti dell'agente stanno sotto `--root`,
+i percorsi non ne escono (più gli `examples/` di demogen in lettura) e i risultati vanno in
+`<root>/out/mcp/`; nessun tetto di consumo da applicare (nessuna chiamata LLM), i gate sono quelli della
+pipeline. Il browser dell'harness vive su un thread suo (Playwright sincrono) e resta aperto fra le
+richieste; `--gpu hardware` ripiega su SwiftShader. In questo repo `.mcp.json` dichiara il server.
+
+**Verifiche**: `tests/test_mcp_server.py` (client MCP in-process: errore con file e riga, correzione,
+render, inspect senza blocker, bundle, percorsi fuori radice rifiutati, oracolo); prova a mano con il
+trasporto stdio vero sulla GPU.
 
 ---
 

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "demogen": {
+      "command": "uv",
+      "args": ["run", "demogen", "mcp", "--root", "."]
+    }
+  }
+}

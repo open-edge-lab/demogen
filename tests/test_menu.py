@@ -48,7 +48,7 @@ def test_voci_numerate_in_ordine_e_nomi_unici() -> None:
     assert len(set(names)) == len(names)
     assert all(e.hw in menu.HW_STYLE for e in menu.ENTRIES)
     assert {"generate", "fake", "resume", "revise", "music", "budget", "config", "kill", "ps", "cats",
-            "horizon", "plan", "preview"} <= set(names)
+            "horizon", "plan", "preview", "mcp"} <= set(names)
     assert menu.find_entry("cats").section == menu.find_entry("horizon").section == "EXAMPLES"
     assert menu.find_entry("plan").section == menu.find_entry("preview").section == "MAIN"
 

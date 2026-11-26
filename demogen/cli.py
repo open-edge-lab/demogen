@@ -10,6 +10,7 @@ import typer
 
 from . import __version__
 from .browser.session import PLAYER_DIR, BrowserSession
+from .engine import owning_timeline, payload_from_file
 
 # console con code page legacy (cp1252 con output in pipe): un carattere non codificabile (→, ▸, ♪)
 # deve diventare '?' invece di far cadere il comando con UnicodeEncodeError
@@ -77,71 +78,9 @@ def doctor() -> None:
             print(f"\n[{mode}] ERROR: {e}")
 
 
-def _owning_timeline(path: Path) -> tuple[Path, dict, dict] | None:
-    """Timeline vicina (cartella dello shader o quella sopra, più un livello di sottocartelle) che usa
-    questo shader come scena: (file, spec, scena). Ricerca limitata, niente rglob su cartelle grandi."""
-    target = path.resolve()
-    for d in dict.fromkeys((path.parent, path.parent.parent)):
-        for tl in sorted([*d.glob("*timeline*.json"), *d.glob("*/*timeline*.json")]):
-            try:
-                spec = json.loads(tl.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            for scene in spec.get("scenes", []) if isinstance(spec, dict) else []:
-                src = scene.get("src") if isinstance(scene, dict) else None
-                if isinstance(src, str) and (tl.parent / src).resolve() == target:
-                    return tl, spec, scene
-    return None
-
-
-def _payload_from_file(path: Path, bpm: float) -> dict:
-    """Da .glsl (scena singola) o timeline.json (demo) → payload .demo."""
-    from .bundle.build import build_payload
-    from .glsl.treeshake import load_library, treeshake
-
-    if path.suffix == ".json":
-        return build_payload(json.loads(path.read_text(encoding="utf-8")), path.parent)
-    # shader di una timeline (esempi): la sua scena da sola, in loop, con common, testo, stile e BPM
-    # della timeline (con il solo common.glsl generico gli shader del gatto e del pinguino non
-    # compilavano: funzioni dello style mancanti, uniform del testo non dichiarati)
-    owner = _owning_timeline(path)
-    if owner is not None:
-        tl, spec, scene = owner
-        one = {**scene, "start_bar": 0, "transition_in": "cut", "transition_bars": 0}
-        return build_payload({**spec, "loop": True, "scenes": [one]}, tl.parent)
-    # shader singolo: common = libreria tree-shaked + style (common.glsl vicino, se c'è)
-    src = path.read_text(encoding="utf-8")
-    style = ""
-    for cand in (path.parent / "common.glsl", path.parent.parent / "common.glsl"):
-        if cand.exists():
-            style = cand.read_text(encoding="utf-8")
-            break
-    lib = load_library(Path(__file__).resolve().parent / "glsl" / "lib")
-    common = treeshake(src + "\n" + style, lib) + ("\n" + style if style else "")
-    return {
-        "format": "demogen/1",
-        "meta": {
-            "title": path.stem,
-            "duration_s": 32.0,
-            "loop": True,
-            "bpm": bpm,
-            "beats_per_bar": 4,
-        },
-        "timeline": {
-            "bpm": bpm,
-            "beats_per_bar": 4,
-            "scenes": [
-                {
-                    "id": "s1", "start_bar": 0, "bars": 16,
-                    "transition_in": "cut", "transition_bars": 0,
-                }
-            ],
-        },
-        "common": common,
-        "scenes": {"s1": src},
-        "render": {"profile": "modern"},
-        "quality": {"target_fps": 60, "min_scale": 0.25},
-    }
+# il motore senza CLI (anche per il server MCP); i nomi con _ restano per chi li importa (test)
+_owning_timeline = owning_timeline
+_payload_from_file = payload_from_file
 
 
 def open_player(sess: BrowserSession, payload: dict) -> dict:
@@ -399,146 +338,38 @@ def inspect(
     out: Path = typer.Option(Path("out"), help="Report folder"),
 ) -> None:
     """Load the demo in the harness, compute metrics + gates, save sheets and the report in out/."""
-    import io
-    import json as _json
-
-    import numpy as np
-    from PIL import Image
-
     from .browser.harness import Harness
-    from .browser.perf_lane import perf_lane
-    from .critic.flash import analyze_flash
-    from .critic.gates import run_gates
-    from .critic.metrics_perf import perf_profile
-    from .critic.metrics_video import video_metrics
-    from .critic.perf_ref import measure_baseline
-    from .critic.sheets import burst_sheet, contact_sheet, diff_heatmap, perf_chart
+    from .engine import CompileFailed, default_config, inspect_payload
 
-    if file.suffix == ".demo":
-        payload = _json.loads(file.read_text(encoding="utf-8"))
-    else:
-        payload = _payload_from_file(file, 120.0)
-    cfg = _try_config()
-    from .config import Config
-
-    cfg_obj = cfg if isinstance(cfg, Config) else Config.model_validate({"providers": {}, "roles": {}})
-
+    payload = payload_from_file(file, 120.0)
     channel = "chromium" if gpu == "hardware" else None
     with Harness(gpu=gpu, headless=True, channel=channel) as h:  # type: ignore[arg-type]
-        res = h.load(payload)
-        if not res["ok"]:
+        try:
+            rep = inspect_payload(h, payload, width=width, height=height, frames=frames, cfg=default_config(),
+                                  report_dir=out / f"inspect_{file.stem}")
+        except CompileFailed as e:
             print("Compile errors:")
-            for e in res["errors"]:
-                print(e[:2000])
-            raise typer.Exit(1)
-        info = h.info()
-        duration = float(payload["meta"]["duration_s"])
-        times = [round(duration * (i + 0.5) / frames, 3) for i in range(frames)]
-        pngs = h.capture(times, width, height)
-        stats = h.scene_stats(times, width, height)
-        with perf_lane():
-            # 5 ripetizioni (mediana): con 3 un picco isolato del giro di misura decideva il p95
-            prof = h.profile(times[:8], width, height, repeats=5)
-        sf = cfg_obj.safety
-        # flash WCAG su TUTTA la durata a >= 30 fps (a 10 fps uno strobo veloce andava in aliasing)
-        cells = h.cell_sequence(0.0, duration, sf.flash_fps, 128, 72, grid=sf.flash_grid)
-        pv = cfg_obj.preview
-        span = (pv.burst_len - 1) / pv.fps
-        bursts_png = [
-            h.capture([round(max(0.0, min(duration - span, duration * (b + 0.5) / pv.bursts - span / 2))
-                             + k / pv.fps, 5) for k in range(pv.burst_len)], width, height)
-            for b in range(pv.bursts)
-        ]
-        loop = bool(payload["meta"].get("loop"))
-        seam_png = h.capture([max(0.0, duration - 1.0 / pv.fps), 0.0], width, height) if loop else None
+            for err in e.errors:
+                print(err[:2000])
+            raise typer.Exit(1) from None
 
-        # Fase 2: metriche audio se il payload ha `audio`
-        audio_m = None
-        audio_x = None
-        if payload.get("audio"):
-            from .critic.metrics_audio import audio_metrics as _audio_metrics
-
-            sr = 44100
-            blocks = int(np.ceil(duration * sr / 16384)) + 1
-            raw = h.render_audio(0.0, blocks)
-            audio_x = np.concatenate([np.asarray(b, dtype=np.float64) for b in raw])
-            audio_m = _audio_metrics(audio_x, sr, float(payload["meta"]["bpm"]), channels=2)
-
-        # per ultimo: la scena vuota sostituisce il payload nell'harness
-        fixed_ms = measure_baseline(h, width, height, payload)
-
-    def _np(p: bytes) -> np.ndarray:
-        return np.asarray(Image.open(io.BytesIO(p)).convert("RGB"))
-
-    frames_np = [_np(p) for p in pngs]
-    vm = video_metrics(frames_np, stats, loop=loop, bursts=[[_np(p) for p in b] for b in bursts_png],
-                       seam=(_np(seam_png[0]), _np(seam_png[1])) if seam_png else None)
-    pf = perf_profile(
-        {float(k): v for k, v in prof["samples"].items()},
-        profile=str(payload.get("render", {}).get("profile", "modern")),
-        resolution=(width, height),
-        method=str(prof["method"]),
-        gpu=str(info["renderer"]),
-        target_fps=cfg_obj.realtime.target_fps,
-        fixed_ms=fixed_ms,
-    )
-    fl = analyze_flash(
-        cells, fps=sf.flash_fps, flash_max_per_s=sf.flash_max_per_s,
-        red_flash=sf.red_flash, area_frac=sf.flash_area_frac,
-    )
-    import gzip as _gzip
-
-    raw_demo = _json.dumps(payload).encode()
-    metrics = {
-        "video": vm,
-        "perf": pf.model_dump(),
-        "flash": fl.model_dump(),
-        "startup": {"compile_total_ms": res["compile_ms"]},
-        "sizes": {"payload_raw_bytes": len(raw_demo),
-                  "payload_gzip_bytes": len(_gzip.compress(raw_demo, 9))},
-        "gpu": info["renderer"],
-    }
-    if audio_m is not None:
-        metrics["audio"] = audio_m
-    issues = run_gates(metrics, cfg_obj)
-
-    rdir = out / f"inspect_{file.stem}"
-    rdir.mkdir(parents=True, exist_ok=True)
-    imgs = [Image.open(io.BytesIO(p)).convert("RGB") for p in pngs]
-    contact_sheet(imgs, times, rdir / "contact.png")
-    rows = [[Image.open(io.BytesIO(p)).convert("RGB") for p in b] for b in bursts_png]
-    burst_sheet(rows, rdir / "burst.png")
-    diff_heatmap([np.asarray(im) for im in rows[0]], rdir / "diff.png")
-    perf_chart({float(k): v for k, v in prof["samples"].items()},
-               cfg_obj.realtime.profiles["modern"]["p95"], rdir / "perf.png")
-    if audio_m is not None and audio_x is not None:
-        from .critic.metrics_audio import spectrogram_png
-
-        # audio_x è stereo interleaved: (N, 2) → spectrogram_png fa la media dei canali
-        stereo = audio_x[: len(audio_x) // 2 * 2].reshape(-1, 2)
-        spectrogram_png(stereo, 44100, float(payload["meta"]["bpm"]), rdir / "spectrogram.png")
-    (rdir / "metrics.json").write_text(_json.dumps(metrics, indent=1, default=str), encoding="utf-8")
-    (rdir / "issues.json").write_text(
-        _json.dumps([i.model_dump() for i in issues], indent=1), encoding="utf-8"
-    )
-
-    print(f"inspect {file.name}  gpu={info['renderer']}")
+    vm, pf, fl = rep.metrics["video"], rep.metrics["perf"], rep.metrics["flash"]
+    print(f"inspect {file.name}  gpu={rep.renderer}")
     print(f"  video: luma_mean={vm['luma_mean']:.3f} black={vm['black_ratio']:.3f} "
           f"nan={vm['nan_ratio']:.4f} flicker={vm['flicker_score']:.4f}")
-    print(f"  perf:  p95={pf.p95_ms:.2f} ms  mean={pf.mean_ms:.2f} ms  "
-          f"load={pf.gpu_load_est:.0%}  ({pf.method}, fixed cost {pf.fixed_ms:.2f} ms subtracted)")
-    print(f"  flash: passed={fl.passed} max/s={fl.max_flashes_per_s:.1f} red={fl.red_flash_events}")
-    if audio_m is not None:
-        obe = audio_m["onset_vs_beat"]
-        print(f"  audio: rms={audio_m['rms']:.3f} peak={audio_m['peak']:.3f} "
+    print(f"  perf:  p95={pf['p95_ms']:.2f} ms  mean={pf['mean_ms']:.2f} ms  "
+          f"load={pf['gpu_load_est']:.0%}  ({pf['method']}, fixed cost {pf['fixed_ms']:.2f} ms subtracted)")
+    print(f"  flash: passed={fl['passed']} max/s={fl['max_flashes_per_s']:.1f} red={fl['red_flash_events']}")
+    if "audio" in rep.metrics:
+        am = rep.metrics["audio"]
+        obe = am["onset_vs_beat"]
+        print(f"  audio: rms={am['rms']:.3f} peak={am['peak']:.3f} "
               f"onsets={obe['n_onsets']} err_vs_beat mean="
               f"{obe['mean_abs_err_ms'] if obe['mean_abs_err_ms'] is not None else float('nan'):.2f} ms")
-    print(f"  gate:  {len(issues)} issue "
-          f"({sum(1 for i in issues if i.severity == 'blocker')} blocker, "
-          f"{sum(1 for i in issues if i.severity == 'major')} major)")
-    for i in issues:
+    print(f"  gate:  {len(rep.issues)} issue ({rep.blockers} blocker, {rep.majors} major)")
+    for i in rep.issues:
         print(f"    [{i.severity}] {i.description}")
-    print(f"  report: {rdir}/ (contact.png, burst.png, diff.png, perf.png, metrics.json, issues.json)")
+    print(f"  report: {rep.report_dir}/ ({', '.join(rep.files)})")
 
 
 @app.command()
@@ -859,6 +690,21 @@ def report(project: Path = typer.Argument(..., exists=True)) -> None:
     from .project.report import build_report
 
     print(build_report(project))
+
+
+@app.command()
+def mcp(
+    root: Path = typer.Option(Path("."), help="Workspace root: tool paths are relative to it and cannot leave it"),
+    gpu: str = typer.Option("hardware", help="hardware (falls back to swiftshader) | swiftshader"),
+    out: Path | None = typer.Option(None, help="Output folder (default: <root>/out/mcp)"),
+) -> None:
+    """MCP server on stdio: an external agent writes shaders, style and timeline; demogen compiles,
+    renders, measures (gates) and bundles them. No LLM on the demogen side."""
+    from .mcp_server import run_stdio
+
+    if gpu not in ("hardware", "swiftshader"):
+        raise typer.BadParameter("--gpu must be hardware or swiftshader")
+    run_stdio(root, gpu, out)
 
 
 @app.command()
