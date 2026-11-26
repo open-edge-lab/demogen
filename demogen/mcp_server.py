@@ -112,14 +112,60 @@ class Workspace:
         self.root = root.resolve()
         self.out = (out or self.root / "out" / "mcp").resolve()
 
+    def allowed(self, p: Path) -> bool:
+        p = p.resolve()
+        return p.is_relative_to(self.root) or p.is_relative_to(EXAMPLES.resolve())
+
     def resolve(self, path: str) -> Path:
         p = Path(path)
         p = (p if p.is_absolute() else self.root / p).resolve()
-        if not (p.is_relative_to(self.root) or p.is_relative_to(EXAMPLES.resolve())):
+        if not self.allowed(p):
             raise ToolError(f"{path}: outside the workspace root {self.root} (and demogen's examples/)")
         if not p.is_file():
             raise ToolError(f"{path}: file not found (resolved to {p})")
         return p
+
+    def check_timeline(self, tl: Path) -> dict:
+        """La timeline e i file a cui rimanda (scene, style, audio) devono stare negli stessi confini:
+        un `src` come "../../segreto" farebbe leggere un file qualunque, che tornerebbe all'agente
+        negli errori di compilazione. Ritorna lo spec."""
+        if not self.allowed(tl):
+            raise ToolError(f"{tl}: timeline outside the workspace root {self.root}")
+        try:
+            spec = json.loads(tl.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            raise ToolError(f"{self.rel(tl)}: {e}") from None
+        if not isinstance(spec, dict):
+            raise ToolError(f"{self.rel(tl)}: the timeline is not a JSON object")
+        refs = [s.get("src") if isinstance(s, dict) else None for s in spec.get("scenes", [])]
+        refs += [spec.get("common"), spec.get("audio")]
+        for ref in refs:
+            if ref is None:
+                continue
+            if not isinstance(ref, str) or not self.allowed(tl.parent / ref):
+                raise ToolError(f"{self.rel(tl)}: {ref!r} is outside the workspace root {self.root}")
+        return spec
+
+    def nearby_style(self, shader: Path) -> Path:
+        """Style di uno shader senza timeline: common.glsl vicino (dentro i confini) o quello degli esempi."""
+        for cand in (shader.parent / "common.glsl", shader.parent.parent / "common.glsl"):
+            if cand.exists() and self.allowed(cand):
+                return cand
+        return DEFAULT_STYLE
+
+    def payload(self, p: Path) -> dict:
+        """Payload di un file già confinato, controllando anche i file a cui rimanda."""
+        if p.suffix == ".demo":  # sorgenti già dentro il payload: nessun file da leggere
+            return payload_from_file(p)
+        if p.suffix == ".json":
+            spec = self.check_timeline(p)
+            return build_payload(spec, p.parent)
+        owner = owning_timeline(p)
+        if owner is not None:
+            self.check_timeline(owner[0])
+            return payload_from_file(p)
+        style = self.nearby_style(p)
+        return inline_payload(p.read_text(encoding="utf-8"), style.read_text(encoding="utf-8"), seconds=32.0)
 
     def out_dir(self, *parts: str) -> Path:
         d = self.out.joinpath(*parts)
@@ -180,9 +226,9 @@ def parse_errors(errors: list[str], scene_file: str, style_file: str) -> list[st
     return out[:MAX_ERRORS]
 
 
-def scene_sources(tl_path: Path) -> tuple[dict, list[tuple[str, Path]], Path | None]:
-    """(spec, [(id scena, file)], file dello style) di una timeline."""
-    spec = json.loads(tl_path.read_text(encoding="utf-8"))
+def scene_sources(tl_path: Path, ws: Workspace) -> tuple[dict, list[tuple[str, Path]], Path | None]:
+    """(spec, [(id scena, file)], file dello style) di una timeline, con i riferimenti già confinati."""
+    spec = ws.check_timeline(tl_path)
     scenes = [(str(s["id"]), (tl_path.parent / s["src"]).resolve()) for s in spec.get("scenes", [])]
     style = (tl_path.parent / spec["common"]).resolve() if spec.get("common") else None
     return spec, scenes, style
@@ -195,16 +241,15 @@ def debug_payloads(path: Path, ws: Workspace) -> list[tuple[str, str, dict]]:
 
     if path.suffix == ".glsl":
         owner = owning_timeline(path)
-        if owner is None:  # shader sciolto: style common.glsl vicino o quello degli esempi
-            style_path = next((c for c in (path.parent / "common.glsl", path.parent.parent / "common.glsl")
-                               if c.exists()), DEFAULT_STYLE)
+        if owner is None:  # shader sciolto: style common.glsl vicino (nei confini) o quello degli esempi
+            style_path = ws.nearby_style(path)
             payload = inline_payload(path.read_text(encoding="utf-8"), style_path.read_text(encoding="utf-8"))
             return [(ws.rel(path), ws.rel(style_path), payload)]
         tl_path = owner[0]
         only: str | None = str(owner[2]["id"])
     else:
         tl_path, only = path, None
-    spec, scenes, style_path = scene_sources(tl_path)
+    spec, scenes, style_path = scene_sources(tl_path, ws)
     style = preprocess(style_path.read_text(encoding="utf-8"), base_dir=tl_path.parent)[0] if style_path else ""
     out = []
     lib = load_library(LIB_DIR)
@@ -340,7 +385,7 @@ def build_server(root: Path, gpu: str = "hardware", out: Path | None = None) -> 
         if path:
             p = ws.resolve(path)
             try:
-                return payload_from_file(p), p.stem.replace(".timeline", "")
+                return ws.payload(p), p.stem.replace(".timeline", "")
             except (ValueError, KeyError, OSError) as e:
                 raise ToolError(f"{path}: {e}") from None
         if shader:
@@ -386,7 +431,7 @@ def build_server(root: Path, gpu: str = "hardware", out: Path | None = None) -> 
                 raise ToolError("pass `path` or `shader`")
             try:
                 jobs = debug_payloads(p, ws) if p.suffix in (".json", ".glsl") else []
-                full = payload_from_file(p) if p.suffix in (".json", ".demo") else None
+                full = ws.payload(p) if p.suffix in (".json", ".demo") else None
             except (ValueError, KeyError, OSError) as e:
                 return {"ok": False, "errors": [f"{path}: {e}"]}
 
@@ -505,7 +550,7 @@ def build_server(root: Path, gpu: str = "hardware", out: Path | None = None) -> 
         if p.suffix != ".json":
             raise ToolError("bundle takes a timeline .json")
         try:
-            spec = json.loads(p.read_text(encoding="utf-8"))
+            spec = ws.check_timeline(p)
             payload = build_payload(spec, p.parent, do_minify=minify)
         except (ValueError, KeyError, OSError) as e:
             raise ToolError(f"{path}: {e}") from None

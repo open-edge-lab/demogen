@@ -83,10 +83,27 @@ def test_agente_esterno_dal_codice_sbagliato_al_bundle(tmp_path: Path) -> None:
             res = json.loads(_text(await c.call_tool("bundle", {"path": "demo.timeline.json"})))
             assert res["demo"] == "out/mcp/bundle/agent-demo.demo" and (tmp_path / res["html"]).exists()
 
-            # fuori dalla radice dell'agente non si legge niente
+            # fuori dalla radice dell'agente non si legge niente: né il percorso passato alla tool né i
+            # file a cui rimanda una timeline (scena, style, audio), il cui testo tornerebbe negli errori
             for path in ("../secret.glsl", str(tmp_path.parent / "secret.glsl")):
                 res = await c.call_tool("validate", {"path": path})
                 assert res.is_error and "outside the workspace root" in _text(res)
+            for key, value in (("src", "../../secret.glsl"), ("common", "../secret.glsl"),
+                               ("audio", str(tmp_path.parent / "secret.glsl"))):
+                evil = json.loads(json.dumps(TIMELINE))
+                if key == "src":
+                    evil["scenes"][0]["src"] = value
+                else:
+                    evil[key] = value
+                (tmp_path / "evil.timeline.json").write_text(json.dumps(evil), encoding="utf-8")
+                for tool in ("validate", "render", "inspect", "bundle"):
+                    res = await c.call_tool(tool, {"path": "evil.timeline.json"})
+                    assert res.is_error and "outside the workspace root" in _text(res), (key, tool)
+            # uno shader sciolto nella radice non prende il common.glsl della cartella sopra
+            (tmp_path.parent / "common.glsl").write_text("#error secret style\n", encoding="utf-8")
+            (tmp_path / "loose.glsl").write_text(FIXED, encoding="utf-8")
+            res = json.loads(_text(await c.call_tool("validate", {"path": "loose.glsl"})))
+            assert res["ok"] is True, res
 
             # oracolo: un SDF esatto passa e diventa GLSL, uno scalato ×2 no
             res = json.loads(_text(await c.call_tool("verify_math", {"requests": [
