@@ -176,6 +176,53 @@ def test_gnoise_continuo_agli_interi_e_hash_sotto_1(harness) -> None:
     assert g_max == 0, "hash ha restituito 1.0"
 
 
+def test_toSRGB_porta_i_negativi_a_zero(harness) -> None:
+    # grain prima di toSRGB rende negativi i pixel quasi neri: pow di un negativo è NaN sulle GPU
+    # (Intel/D3D: metà dei pixel della demo M1). SwiftShader non fa NaN ma restituisce il negativo
+    # lineare: qui si controlla che i negativi valgano 0.
+    lib = load_library(LIB)
+    scene = ("void mainImage(out vec4 c, in vec2 p){\n"
+             "  c = vec4(toSRGB(vec3(-0.004 * (1.0 + fract(p.x * 0.37)))), 1.0);\n}\n")
+    payload = {
+        "format": "demogen/1",
+        "meta": {"title": "s", "duration_s": 1, "loop": False, "bpm": 120, "beats_per_bar": 4},
+        "timeline": {"bpm": 120, "beats_per_bar": 4, "scenes": [
+            {"id": "s1", "start_bar": 0, "bars": 1, "transition_in": "cut", "transition_bars": 0}]},
+        "common": treeshake(scene, lib), "scenes": {"s1": scene}, "render": {"profile": "modern"},
+    }
+    res = harness.load(payload)
+    assert res["ok"], res["errors"]
+    stats = harness.scene_stats([0.0], 64, 64)[0]
+    assert stats["nan_ratio"] == 0 and stats["inf_ratio"] == 0
+    assert stats["luma_mean"] == 0, f"toSRGB of a negative is not 0 (mean luma {stats['luma_mean']})"
+
+
+def test_drawGlyph_disegna_i_caratteri_dritti(harness) -> None:
+    # la riga 0 del font è quella in alto; drawText la disegnava in basso e tutti gli scroller
+    # retro uscivano capovolti. 'P' (0x50): riga 0 = 0x7C (.11111..), righe 4-6 = 0x40, riga 7 vuota.
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    lib = load_library(LIB)
+    scene = "void mainImage(out vec4 c, in vec2 p){ c = vec4(vec3(drawGlyph(p, vec2(0.0), 4.0, 80)), 1.0); }\n"
+    payload = {
+        "format": "demogen/1",
+        "meta": {"title": "g", "duration_s": 1, "loop": False, "bpm": 120, "beats_per_bar": 4},
+        "timeline": {"bpm": 120, "beats_per_bar": 4, "scenes": [
+            {"id": "s1", "start_bar": 0, "bars": 1, "transition_in": "cut", "transition_bars": 0}]},
+        "common": treeshake(scene, lib), "scenes": {"s1": scene}, "render": {"profile": "modern"},
+    }
+    res = harness.load(payload)
+    assert res["ok"], res["errors"]
+    img = np.asarray(Image.open(io.BytesIO(harness.capture([0.0], 32, 32)[0])).convert("L"))
+    # 8 righe di glifo × 4 px: centro della riga r a y = 4r + 2 (dall'alto), colonna c a x = 4c + 2
+    assert img[2, 14] > 128, "the top row of 'P' is not at the top (glyph upside down?)"
+    assert img[30, :].max() < 128, "the empty row 7 of 'P' is not at the bottom"
+    assert img[22, 6] > 128 and img[22, 14] < 128, "row 5 of 'P' should only have the stem"
+
+
 def test_docs_api_reference() -> None:
     md = generate_api_reference(LIB)
     assert "hash11" in md and "raymarch" in md and "retroFinalize" in md

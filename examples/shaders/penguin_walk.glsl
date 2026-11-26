@@ -13,8 +13,10 @@ float sdRoundBox2(vec2 p, vec2 b, float r) {
 
 // Pinguino in spazio locale (origine ai piedi). Ritorna vec4(colore, maschera).
 vec4 penguin(vec2 q, float dir, float walkPhase, float jump) {
-    q.x *= dir;                                   // specchia per camminare a sinistra
-    q.y += jump;                                  // salto
+    // specchia per camminare a sinistra; da fermo (dir = 0) guarda a destra: con q.x *= 0 il profilo
+    // al centro del pinguino si allargava a tutto lo schermo in strisce che lampeggiavano col salto
+    q.x *= dir < 0.0 ? -1.0 : 1.0;
+    q.y -= jump;                                  // salto: il disegno sale di `jump` pixel
     float moving = step(0.001, abs(dir));
     float rot = sin(walkPhase * 3.14159) * 0.13 * moving;   // waddle goffo
     float c = cos(rot), s = sin(rot);
@@ -111,19 +113,22 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         cl = min(cl, sdEllipse2(px - vec2(cx + 12.0, cy - 4.0), vec2(10.0, 5.0)));
         col = mix(col, vec3(1.0), aaStep(0.0, -cl * 1.5) * 0.9);
     }
-    float ground = aaStep(0.0, -(groundY - px.y) * 1.5);
-    col = mix(col, vec3(0.93, 0.96, 0.99), ground); // neve
+    // neve sotto la linea del suolo (y verso l'alto: prima copriva il cielo, sole e nuvole compresi)
+    float ground = aaStep(0.0, (groundY - px.y) * 1.5);
+    col = mix(col, vec3(0.93, 0.96, 0.99), ground);
 
-    // ---- pinguino + ombra
+    // ---- pinguino + ombra sulla neve, sotto i piedi
     vec2 pos = vec2(x, groundY);
     float shScale = 1.0 - clamp(jump / 16.0, 0.0, 1.0) * 0.5;
-    float sh = sdEllipse2(vec2(px.x - pos.x, px.y - (groundY + 2.0)), vec2(12.0, 3.0) * vec2(shScale, 1.0));
+    float sh = sdEllipse2(vec2(px.x - pos.x, px.y - (groundY - 1.5)), vec2(12.0, 3.0) * vec2(shScale, 1.0));
     col = mix(col, vec3(0.55, 0.65, 0.75), aaStep(0.0, -sh * 1.5) * 0.30 * ground);
     vec4 pg = penguin(px - pos, dir, walkPhase, jump);
     col = mix(col, pg.rgb, pg.a);
 
-    // "HI!" sopra la testa durante i salti
-    float hiMask = drawText(px, pos + vec2(-9.0, 46.0 + jump), 1.0);
+    // "HI!" sopra la testa durante i salti: glifi presi uno a uno (drawText scrive il testo dello scroller)
+    vec2 hiAt = pos + vec2(-12.0, 46.0 + jump);
+    float hiMask = drawGlyph(px, hiAt, 1.0, 72) + drawGlyph(px, hiAt + vec2(8.0, 0.0), 1.0, 73)
+                 + drawGlyph(px, hiAt + vec2(16.0, 0.0), 1.0, 33);
     col = mix(col, vec3(0.239, 0.353, 0.502), hiMask * hi);
 
     // scroller in basso, lento e morbido

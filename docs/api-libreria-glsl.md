@@ -179,7 +179,8 @@ vec3 aces(vec3 x) {
 
 ### `toSRGB`
 
-lineare → sRGB.
+lineare → sRGB. I negativi (per esempio dopo grain) valgono 0: pow di un negativo è NaN sulle GPU
+e mix con step non lo scarta (NaN × 0 = NaN).
 
 ```glsl
 vec3 toSRGB(vec3 c) {
@@ -305,10 +306,20 @@ carattere i-esimo del testo da uText (ASCII, 0 se oltre uTextLen).
 int textChar(int i) {
 ```
 
+### `drawGlyph`
+
+copertura 0..1 di un carattere ASCII `code` in coordinate pixel (y verso l'alto, come fragCoord):
+origin = angolo basso-sx del glifo, scale = dimensione glifo (8*scale px). Per scritte proprie
+(es. "HI!": drawGlyph(p, o, 1.0, 72) + drawGlyph(p, o + vec2(8, 0), 1.0, 73) + ...).
+
+```glsl
+float drawGlyph(vec2 fragPx, vec2 origin, float scale, int code) {
+```
+
 ### `drawText`
 
-copertura 0..1 del testo (da uText) disegnato in coordinate pixel:
-origin = angolo alto-sx del primo glifo, scale = dimensione glifo (8*scale px).
+copertura 0..1 del testo (da uText) disegnato in coordinate pixel (y verso l'alto, come fragCoord):
+origin = angolo basso-sx del primo glifo, scale = dimensione glifo (8*scale px).
 Ritorna 1 dove il testo copre il pixel.
 
 ```glsl

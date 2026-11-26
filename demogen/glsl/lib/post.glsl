@@ -7,8 +7,10 @@ vec3 aces(vec3 x) {
 }
 
 /// @fn toSRGB
-/// lineare → sRGB.
+/// lineare → sRGB. I negativi (per esempio dopo grain) valgono 0: pow di un negativo è NaN sulle GPU
+/// e mix con step non lo scarta (NaN × 0 = NaN).
 vec3 toSRGB(vec3 c) {
+    c = max(c, vec3(0.0));
     return mix(1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, c * 12.92, step(c, vec3(0.0031308)));
 }
 

@@ -116,20 +116,28 @@ int textChar(int i) {
     return int((w >> (8u * uint(i & 3))) & 0xFFu);
 }
 
+/// @fn drawGlyph
+/// copertura 0..1 di un carattere ASCII `code` in coordinate pixel (y verso l'alto, come fragCoord):
+/// origin = angolo basso-sx del glifo, scale = dimensione glifo (8*scale px). Per scritte proprie
+/// (es. "HI!": drawGlyph(p, o, 1.0, 72) + drawGlyph(p, o + vec2(8, 0), 1.0, 73) + ...).
+float drawGlyph(vec2 fragPx, vec2 origin, float scale, int code) {
+    vec2 rel = (fragPx - origin) / scale;
+    if (rel.x < 0.0 || rel.y < 0.0 || rel.x >= 8.0 || rel.y >= 8.0) return 0.0;
+    uvec2 g = fontGlyph(code);
+    int col = int(rel.x);
+    int row = 7 - int(rel.y);  // la riga 0 del font è quella in alto
+    uint bits = (row < 4) ? (g.x >> (8u * uint(3 - row))) : (g.y >> (8u * uint(7 - row)));
+    return float((bits >> (7u - uint(col))) & 1u);
+}
+
 /// @fn drawText
-/// copertura 0..1 del testo (da uText) disegnato in coordinate pixel:
-/// origin = angolo alto-sx del primo glifo, scale = dimensione glifo (8*scale px).
+/// copertura 0..1 del testo (da uText) disegnato in coordinate pixel (y verso l'alto, come fragCoord):
+/// origin = angolo basso-sx del primo glifo, scale = dimensione glifo (8*scale px).
 /// Ritorna 1 dove il testo copre il pixel.
 float drawText(vec2 fragPx, vec2 origin, float scale) {
     vec2 rel = (fragPx - origin) / scale;
     if (rel.x < 0.0 || rel.y < 0.0) return 0.0;
     int ci = int(rel.x / 8.0);
     if (ci >= uTextLen || rel.y >= 8.0) return 0.0;
-    int c = textChar(ci);
-    uvec2 g = fontGlyph(c);
-    int col = int(rel.x) & 7;
-    int row = int(rel.y);
-    uint bits = (row < 4) ? (g.x >> (8u * uint(3 - row))) : (g.y >> (8u * uint(7 - row)));
-    uint bit = (bits >> (7u - uint(col))) & 1u;
-    return float(bit);
+    return drawGlyph(fragPx, origin + vec2(float(ci) * 8.0 * scale, 0.0), scale, textChar(ci));
 }
