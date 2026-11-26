@@ -68,6 +68,11 @@ npm run build --workspace player     # genera player/dist/ (esm + min.js + types
   ```
   con lo script di pausa/riduci movimento in fondo a `edge-horizon.html` (con `src=` il payload arriva via
   `fetch`, quindi serve HTTP, non `file://`).
+  Per il resto della pagina c'è la compagna `examples/edge_blueprint.timeline.json` (stesso style): la
+  griglia di puntini da disegno tecnico, con un "+" ogni 5 puntini, che respira a onde lente; 30 fps,
+  ~1,5 KB gzip. Va in un `<demogen-player>` con `position:fixed; inset:0; z-index:-1` subito dentro
+  `<body>`, con le sezioni sopra semitrasparenti (sul sito: `bg-slate-900/50`, le altre trasparenti) e
+  senza la griglia CSS, che ora disegna lo shader; si mette in pausa finché la hero copre lo schermo.
 
 ## API esportata (`@demogen/player`)
 

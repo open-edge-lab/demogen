@@ -157,8 +157,10 @@ Ready-made examples in `examples/web/` open with a double click, for instance `w
 (pixel-art cats, one hunting a moth; also the `cats` menu entry), `penguin.html` and
 `edge-horizon.html` (a live shader as the background of a website hero: dotted grid, icy planet drawn
 as a blueprint, network pulses, 128 s seamless loop, paused off screen; also the `horizon` menu entry);
-see `examples/web/README.md`. `play` and `inspect` on a single shader of a timeline use that timeline's
-common code, text and style.
+see `examples/web/README.md`. Its companion `examples/edge_blueprint.timeline.json` is the background of
+the rest of the page: the technical-drawing dot grid with a "+" every 5 dots, breathing in slow waves
+(fixed behind the sections, 30 fps, 1.5 KB gzip). `play` and `inspect` on a single shader of a timeline
+use that timeline's common code, text and style.
 
 ### MCP server: an external agent writes the demo
 
@@ -353,7 +355,10 @@ Esempi pronti in `examples/web/`, da aprire con un doppio click: per esempio `wh
 (gatti in pixel art, uno caccia una falena; anche la voce `cats` del menu), `penguin.html` e
 `edge-horizon.html` (uno shader vivo come sfondo della hero di un sito: griglia di puntini, pianeta
 ghiacciato disegnato come un progetto, impulsi di rete, loop di 128 s senza giunture, in pausa fuori
-schermo; anche la voce `horizon` del menu); vedi `examples/web/README.md`. `play` e `inspect` su un singolo shader di una timeline usano common, testo e
+schermo; anche la voce `horizon` del menu); vedi `examples/web/README.md`. La sua compagna
+`examples/edge_blueprint.timeline.json` è lo sfondo del resto della pagina: la griglia di puntini da
+disegno tecnico con un "+" ogni 5 puntini, che respira a onde lente (fissa dietro le sezioni, 30 fps,
+1,5 KB gzip). `play` e `inspect` su un singolo shader di una timeline usano common, testo e
 stile di quella timeline.
 
 ### Server MCP: la demo la scrive un agente esterno

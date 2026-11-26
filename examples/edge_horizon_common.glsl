@@ -1,5 +1,5 @@
-// Style della scena "edge horizon" (sfondo della hero di openedge.consulting): i colori del sito
-// (Tailwind slate/cyan/sky/pink) e il finalize.
+// Style delle scene "edge horizon" (sfondo della hero di openedge.consulting) e "edge blueprint"
+// (sfondo delle sezioni sotto): i colori del sito (Tailwind slate/cyan/sky/pink) e il finalize.
 // La scena compone in sRGB come fa il CSS del sito, così il fondo e la griglia di puntini combaciano
 // con il resto della pagina: niente aces/vignette/toSRGB, che sposterebbero o scurirebbero il fondo
 // (#020617 ha luma 0.025, appena sopra la soglia 0.02 del gate "nero").

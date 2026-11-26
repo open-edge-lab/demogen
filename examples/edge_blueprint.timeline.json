@@ -1,0 +1,12 @@
+{
+  "name": "edge-blueprint",
+  "bpm": 120,
+  "beats_per_bar": 4,
+  "loop": true,
+  "common": "edge_horizon_common.glsl",
+  "render": { "profile": "modern" },
+  "quality": { "target_fps": 30, "min_scale": 0.5 },
+  "scenes": [
+    { "id": "blueprint", "src": "shaders/edge_blueprint.glsl", "start_bar": 0, "bars": 32, "transition_in": "cut", "transition_bars": 0 }
+  ]
+}
