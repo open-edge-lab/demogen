@@ -29,9 +29,9 @@ def validate_glslang(frag_src: str, timeout: float = 20.0) -> list[str]:
         out = (proc.stdout + proc.stderr).strip()
         if proc.returncode == 0 and "ERROR" not in out:
             return []
-        return [out] if out else ["errore sconosciuto"]
+        return [out] if out else ["unknown error"]
     except (OSError, subprocess.TimeoutExpired) as e:
-        return [f"glslangValidator fallito: {e}"]
+        return [f"glslangValidator failed: {e}"]
 
 
 async def validate_in_browser(harness, frag_src: str) -> list[str]:
@@ -45,8 +45,8 @@ def check_source_rules(src: str) -> list[str]:
     errors: list[str] = []
     for banned in ("iMouse", "iDate", "iChannel", "iFrame", "iTimeDelta"):
         if banned in src:
-            errors.append(f"uniform vietata: {banned}")
+            errors.append(f"forbidden uniform: {banned}")
     # letterali interi usati inuites donde si aspetta float: euristica semplice
     for m in __import__("re").finditer(r"(?<![\w.])(\d+)(?![\w.])\s*[,;)]", src):
-        errors.append(f"letterale intero nudo {m.group(1)} (usa {m.group(1)}.0): riga approx")
+        errors.append(f"bare integer literal {m.group(1)} (use {m.group(1)}.0): approximate line")
     return errors

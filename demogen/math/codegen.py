@@ -57,7 +57,7 @@ def _gen(node: ast.AST) -> str:
             vecs = [f"vec{n}({', '.join(args[i * n:(i + 1) * n])})" for i in range(k)]
             return f"{glsl_fn}({', '.join(vecs)})"
         return f"{FUNCTIONS[fname]}({', '.join(args)})"
-    raise ValueError(f"nodo non gestito: {type(node).__name__}")
+    raise ValueError(f"unhandled node: {type(node).__name__}")
 
 
 def codegen_glsl(req_id: str, expr: str, params: list[str]) -> str:
@@ -67,13 +67,13 @@ def codegen_glsl(req_id: str, expr: str, params: list[str]) -> str:
     `inputs` della richiesta); deve contenere tutte le variabili usate. La firma è
     `float <req_id>(float p0, float p1, ...)`.
     """
-    check_identifier(req_id, "id della funzione")
+    check_identifier(req_id, "function id")
     for p in params:
-        check_identifier(p, "parametro")
+        check_identifier(p, "parameter")
     tree = parse_safe(expr)
     unknown = sorted(n for n in used_names(expr) if n not in params)
     if unknown:
-        raise ValueError(f"parametri mancanti: {unknown}")
+        raise ValueError(f"missing parameters: {unknown}")
     sig = ", ".join(f"float {p}" for p in params)
     body = _gen(tree)
-    return f"// oracolo matematico verificato: {req_id}\nfloat {req_id}({sig}) {{\n    return {body};\n}}\n"
+    return f"// verified by the math oracle: {req_id}\nfloat {req_id}({sig}) {{\n    return {body};\n}}\n"

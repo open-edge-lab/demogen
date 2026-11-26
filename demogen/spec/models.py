@@ -18,7 +18,7 @@ MAX_TEXT_BYTES = 256  # uText[64] × 4 byte: il player legge byte UTF-8, non car
 
 def _check_text(v: str | None) -> str | None:
     if v is not None and len(v.encode("utf-8")) > MAX_TEXT_BYTES:
-        raise ValueError(f"text: massimo {MAX_TEXT_BYTES} byte UTF-8 (ne ha {len(v.encode('utf-8'))})")
+        raise ValueError(f"text: at most {MAX_TEXT_BYTES} UTF-8 bytes (got {len(v.encode('utf-8'))})")
     return v
 
 
@@ -74,18 +74,18 @@ class DemoSpec(BaseModel):
         slot_ids = [s.id for s in self.timeline.scenes]
         scene_ids = [s.id for s in self.scenes]
         if not slot_ids:
-            raise ValueError("timeline.scenes vuota")
+            raise ValueError("timeline.scenes is empty")
         if len(set(slot_ids)) != len(slot_ids) or len(set(scene_ids)) != len(scene_ids):
-            raise ValueError(f"id di scena duplicati: timeline={slot_ids} scenes={scene_ids}")
+            raise ValueError(f"duplicate scene ids: timeline={slot_ids} scenes={scene_ids}")
         if set(slot_ids) != set(scene_ids):
             raise ValueError(
-                f"timeline.scenes e scenes devono avere gli stessi id: {sorted(slot_ids)} vs {sorted(scene_ids)}"
+                f"timeline.scenes and scenes must have the same ids: {sorted(slot_ids)} vs {sorted(scene_ids)}"
             )
         for s in self.timeline.scenes:
             if s.bars <= 0 or s.start_bar < 0:
-                raise ValueError(f"slot {s.id}: bars deve essere > 0 e start_bar >= 0")
+                raise ValueError(f"slot {s.id}: bars must be > 0 and start_bar >= 0")
             if not 0 <= s.transition_bars <= s.bars:
-                raise ValueError(f"slot {s.id}: transition_bars deve stare in [0, bars]")
+                raise ValueError(f"slot {s.id}: transition_bars must be in [0, bars]")
         return self
 
 
@@ -142,7 +142,7 @@ class DemoPayloadSpec(BaseModel):
     render: RenderSpec = Field(default_factory=RenderSpec)
     text: str | None = None
     post: dict = Field(default_factory=dict)
-    quality: dict = Field(default_factory=lambda: {"min_scale": 0.5, "target_fps": 60})
+    quality: dict = Field(default_factory=lambda: {"min_scale": 0.25, "target_fps": 60})
     audio: str = ""  # Fase 2: sorgente GLSL con mainAudio(out vec4, in float t)
 
     @field_validator("text")

@@ -41,6 +41,12 @@ def require_browser() -> None:
         skip_or_fail(f"browser Playwright non disponibile: {e}")
 
 
+@pytest.fixture(autouse=True)
+def _spend_ledger_isolato(tmp_path_factory, monkeypatch) -> None:
+    """Il registro della spesa LLM di ogni test sta in una cartella temporanea: mai nel registro vero."""
+    monkeypatch.setenv("DEMOGEN_SPEND_LEDGER", str(tmp_path_factory.mktemp("ledger") / "spend.jsonl"))
+
+
 @pytest.fixture
 def harness() -> Iterator[object]:
     """Harness SwiftShader avviato e chiuso per test; skip/fail SOLO sull'avvio."""

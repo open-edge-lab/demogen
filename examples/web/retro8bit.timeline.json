@@ -4,7 +4,7 @@
   "beats_per_bar": 4,
   "loop": true,
   "common": "../common.glsl",
-  "text": "DEMOGEN 8BIT * PIXEL PERFECT * ZERO BANDA * GPU DEL VISITATORE * 0123456789",
+  "text": "DEMOGEN 8BIT * PIXEL PERFECT * ZERO BANDWIDTH * VISITOR GPU * 0123456789",
   "render": {
     "profile": "retro",
     "retro": { "internal_resolution": [320, 180], "upscale": "nearest" }

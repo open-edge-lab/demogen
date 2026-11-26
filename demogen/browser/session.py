@@ -44,6 +44,17 @@ def is_local_url(url: str, port: int) -> bool:
         return False
 
 
+def is_console_noise(text: str) -> bool:
+    """Avvisi di prestazione del driver GL di Chromium ("GPU stall due to ReadPixels"): li provoca la
+    cattura dei frame dell'harness, sono attesi e riempivano il log di ogni generazione."""
+    return "GL Driver Message" in text and "Performance" in text
+
+
+def _print_console(msg) -> None:
+    if not is_console_noise(msg.text):
+        print(f"[console:{msg.type}] {msg.text}")
+
+
 class BrowserSession:
     """Sessione Playwright: server locale su 127.0.0.1, rete esterna bloccata via page.route."""
 
@@ -86,9 +97,7 @@ class BrowserSession:
         self.page = self.browser.new_page()
         self.page.set_default_timeout(self.timeout_ms)
         self.page.set_default_navigation_timeout(self.timeout_ms)
-        self.page.on(
-            "console", lambda msg: print(f"[console:{msg.type}] {msg.text}")
-        )
+        self.page.on("console", _print_console)
         self.page.on("pageerror", lambda err: print(f"[pageerror] {err}"))
 
         def _block_external(route, request) -> None:

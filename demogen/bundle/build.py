@@ -27,7 +27,7 @@ def build_payload_from_sources(
 ) -> dict:
     """Payload .demo da sorgenti in memoria (pipeline).
 
-    `math_srcs` (Fase 6, oracolo matematico): fonctions GLSL verificate per scena,
+    `math_srcs` (Fase 6, oracolo matematico): funzioni GLSL verificate per scena,
     concatenate davanti allo shader della scena.
     """
     bpm = float(spec["bpm"])
@@ -106,7 +106,7 @@ def _finalize_payload(spec: dict, bpm: float, bpb: int, scenes_spec: list,
         "render": spec.get("render", {"profile": "modern"}),
         "text": spec.get("text"),
         "post": spec.get("post", {}),
-        "quality": spec.get("quality", {"min_scale": 0.5, "target_fps": 60}),
+        "quality": spec.get("quality", {"min_scale": 0.25, "target_fps": 60}),
     }
     if audio_src:
         payload["audio"] = audio_src
@@ -117,21 +117,97 @@ def _finalize_payload(spec: dict, bpm: float, bpb: int, scenes_spec: list,
 # Avvio del bundle al primo click:
 # - l'AudioContext nasce e fa resume() DENTRO il gesto (policy autoplay), poi passa al Player:
 #   i listener di sblocco del Player arriverebbero dopo la compilazione, a click già finito;
-# - l'HUD resta su "caricamento…" e mostra gli errori di costruttore e load();
-# - spazio = pausa/play (la posizione resta).
-_BOOT_JS = (
-    "const hud=document.getElementById('hud');"
-    "const fail=e=>{hud.style.display='flex';hud.textContent='ERRORE: '+((e&&e.message)||e);};"
-    "hud.addEventListener('click',()=>{"
-    "hud.textContent='caricamento…';let ac;"
-    "try{const AC=window.AudioContext||window.webkitAudioContext;"
-    "if(AC&&PAYLOAD.audio){ac=new AC();ac.resume();}}catch(e){}"
-    "let p;try{p=new demogenPlayer.Player(document.getElementById('c'),PAYLOAD,{autoPlay:true,audioContext:ac});}"
-    "catch(e){fail(e);return;}"
-    "window.__player=p;p.load().then(()=>{hud.style.display='none';}).catch(fail);"
-    "},{once:true});"
-    "addEventListener('keydown',e=>{const p=window.__player;"
-    "if(e.code==='Space'&&p){e.preventDefault();p.isPlaying?p.pause():p.play();}});"
+# - l'HUD resta su "loading…" e mostra gli errori di costruttore e load();
+# - barra dei controlli: Start/Pause, Stop (torna all'inizio), Loop continuo on/off, posizione
+#   cliccabile, tempo, e se la demo ha musica mute e volume (ricordati in localStorage); si nasconde
+#   mentre la demo va e ricompare muovendo il mouse;
+# - tasti: spazio = start/pausa, S = stop, L = loop, M = mute, frecce su/giù = volume ±10%;
+# - il canvas segue la finestra: il Player ridimensiona il buffer e ridisegna anche in pausa.
+_BOOT_JS = """
+const $=id=>document.getElementById(id);
+const hud=$('hud'),bar=$('bar'),bp=$('bp'),bs=$('bs'),bl=$('bl'),pos=$('pos'),fill=$('fill'),tm=$('tm');
+const bm=$('bm'),bv=$('bv'),KEY='demogen.audio';
+let vol=1,mut=false;
+try{const s=JSON.parse(localStorage.getItem(KEY)||'{}');
+  if(typeof s.v==='number')vol=Math.max(0,Math.min(1,s.v));mut=!!s.m;}catch(e){}
+const setVol=(v,m)=>{vol=Math.round(Math.max(0,Math.min(1,v))*100)/100;mut=m;
+  if(p){p.volume=vol;p.muted=mut;}
+  bv.value=String(vol);bm.setAttribute('aria-pressed',String(mut));
+  bm.textContent=mut||vol===0?'♪ Muted':'♪ '+Math.round(vol*100)+'%';
+  try{localStorage.setItem(KEY,JSON.stringify({v:vol,m:mut}));}catch(e){}};
+const fail=e=>{hud.style.display='flex';hud.textContent='ERROR: '+((e&&e.message)||e);};
+const two=n=>String(n).padStart(2,'0');
+const mmss=t=>{t=Math.max(0,Math.floor(t));return two(Math.floor(t/60))+':'+two(t%60);};
+let p=null,moved=0,shown='';
+hud.addEventListener('click',()=>{
+  hud.textContent='loading…';let ac;
+  try{const AC=window.AudioContext||window.webkitAudioContext;if(AC&&PAYLOAD.audio){ac=new AC();ac.resume();}}catch(e){}
+  try{p=new demogenPlayer.Player($('c'),PAYLOAD,{autoPlay:true,audioContext:ac,volume:vol,muted:mut});}
+  catch(e){fail(e);return;}
+  window.__player=p;
+  p.load().then(()=>{hud.style.display='none';bar.style.display='flex';bar.classList.toggle('silent',!p.hasAudio);
+    setVol(vol,mut);moved=performance.now();requestAnimationFrame(ui);}).catch(fail);
+},{once:true});
+const toggle=()=>{if(p)p.isPlaying?p.pause():p.play();};
+const stop=()=>{if(p)p.stop();};
+const loop=()=>{if(p)p.setLoop(!p.loop);};
+const mute=()=>setVol(mut&&vol===0?0.5:vol,!(mut||vol===0));
+bp.onclick=toggle;bs.onclick=stop;bl.onclick=loop;bm.onclick=mute;
+bv.oninput=()=>setVol(+bv.value,false);
+pos.onclick=e=>{if(!p)return;const r=pos.getBoundingClientRect();
+  p.seek(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*p.durationS);};
+addEventListener('keydown',e=>{if(!p)return;
+  if(e.code==='Space'){e.preventDefault();toggle();}else if(e.code==='KeyS')stop();else if(e.code==='KeyL')loop();
+  else if(e.code==='KeyM')mute();
+  else if(e.code==='ArrowUp'||e.code==='ArrowDown'){e.preventDefault();
+    setVol(vol+(e.code==='ArrowUp'?.1:-.1),false);}});
+addEventListener('pointermove',()=>{moved=performance.now();});
+function ui(now){
+  const t=p.currentTime(),d=p.durationS;
+  const label=p.isPlaying?'❚❚ Pause':(p.ended?'▶ Restart':'▶ Start');
+  const s=label+'|'+p.loop+'|'+mmss(t)+' / '+mmss(d);
+  if(s!==shown){shown=s;bp.textContent=label;bl.setAttribute('aria-pressed',String(p.loop));
+    bl.textContent='⟳ Loop '+(p.loop?'on':'off');tm.textContent=mmss(t)+' / '+mmss(d);}
+  fill.style.width=(d>0?Math.min(100,t/d*100):0)+'%';
+  document.body.classList.toggle('idle',p.isPlaying&&now-moved>2500);
+  requestAnimationFrame(ui);
+}
+"""
+
+_STYLE = (
+    "html,body{margin:0;height:100%;background:#000;overflow:hidden}"
+    "canvas{position:fixed;inset:0;width:100%;height:100%;display:block}"
+    "#hud{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;"
+    "color:#eee;font:14px monospace;cursor:pointer}"
+    "#bar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);display:none;align-items:center;"
+    "gap:10px;padding:8px 12px;background:rgba(8,8,18,.8);border:1px solid #b14aed;border-radius:6px;"
+    "font:13px monospace;color:#d8e2ff;transition:opacity .4s;user-select:none;"
+    "width:max-content;white-space:nowrap;max-width:calc(100vw - 20px);box-sizing:border-box;"
+    "flex-wrap:wrap;justify-content:center;row-gap:8px}"
+    "#bar button{font:inherit;color:inherit;background:#15152a;border:1px solid #3d3d66;border-radius:4px;"
+    "padding:4px 10px;cursor:pointer}"
+    "#bar button:hover{border-color:#05d9e8}"
+    "#bar button[aria-pressed=true]{border-color:#39ff14;color:#39ff14}"
+    "#pos{width:180px;height:6px;background:#2a2a44;border-radius:3px;cursor:pointer;position:relative}"
+    "#fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:3px;"
+    "background:linear-gradient(90deg,#f72585,#05d9e8)}"
+    "#bm[aria-pressed=true]{border-color:#ff2a6d;color:#ff2a6d}"
+    "#bv{width:90px;accent-color:#05d9e8;cursor:pointer}"
+    "#bar.silent #bm,#bar.silent #bv{display:none}"
+    "body.idle #bar{opacity:0}body.idle{cursor:none}"
+)
+
+_CONTROLS = (
+    '<div id="bar">'
+    '<button id="bp" title="Start / pause (Space)">▶ Start</button>'
+    '<button id="bs" title="Stop: back to the start (S)">■ Stop</button>'
+    '<button id="bl" title="Loop continuously when the demo ends (L)" aria-pressed="false">⟳ Loop off</button>'
+    '<div id="pos" title="Click to seek"><div id="fill"></div></div>'
+    '<span id="tm">00:00 / 00:00</span>'
+    '<button id="bm" title="Mute / unmute the music (M)" aria-pressed="false">♪ 100%</button>'
+    '<input id="bv" type="range" min="0" max="1" step="0.05" value="1" title="Music volume (up / down arrows)"'
+    ' aria-label="Music volume">'
+    "</div>"
 )
 
 
@@ -160,11 +236,8 @@ def write_bundle(payload: dict, out_dir: Path, name: str) -> dict:
     html = (
         "<!doctype html>\n<html><head><meta charset=\"utf-8\">"
         f"<title>{title}</title>"
-        "<style>html,body{margin:0;height:100%;background:#000}"
-        "canvas{width:100vw;height:100vh;display:block}"
-        "#hud{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;"
-        "color:#eee;font:14px monospace;cursor:pointer}</style></head><body>"
-        "<canvas id=\"c\"></canvas><div id=\"hud\">click per avviare</div>"
+        f"<link rel=\"icon\" href=\"data:,\"><style>{_STYLE}</style></head><body>"
+        f"<canvas id=\"c\"></canvas><div id=\"hud\">click to start</div>{_CONTROLS}"
         f"<script>{player_js}</script>"
         f"<script>const PAYLOAD={script_json(payload)};</script>"
         f"<script>{_BOOT_JS}</script></body></html>"

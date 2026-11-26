@@ -48,7 +48,7 @@ def burst_sheet(bursts: list[list[Image.Image]], out_path: Path) -> Path:
     sheet = Image.new("RGB", (cols * tw, len(bursts) * (th + 18)), (10, 10, 10))
     for r, burst in enumerate(bursts):
         for i, f in enumerate(burst):
-            sheet.paste(_label(f.convert("RGB").copy(), f"raffica {r} #{i}"), (i * tw, r * (th + 18)))
+            sheet.paste(_label(f.convert("RGB").copy(), f"burst {r} #{i}"), (i * tw, r * (th + 18)))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(out_path)
     return out_path
@@ -58,12 +58,12 @@ def diff_heatmap(frames: list[np.ndarray], out_path: Path) -> Path:
     """|frame[i+1]-frame[i]| come heatmap per frame (flicker/aliasing temporale)."""
     n = len(frames) - 1
     if n < 1:
-        raise ValueError("servono almeno 2 frame")
+        raise ValueError("at least 2 frames are required")
     h, w = frames[0].shape[:2]
     strip = Image.new("RGB", (n * w, h + 18), (0, 0, 0))
     d = ImageDraw.Draw(strip)
     d.rectangle([0, 0, n * w, 18], fill=(0, 0, 0))
-    d.text((4, 4), "|diff| frame consecutivi (heatmap)", fill=(255, 255, 0))
+    d.text((4, 4), "|diff| consecutive frames (heatmap)", fill=(255, 255, 0))
     for i in range(n):
         diff = np.abs(frames[i + 1].astype(float) - frames[i].astype(float)).mean(axis=2)
         diff = np.clip(diff * 4, 0, 255).astype(np.uint8)  # amplifica ×4

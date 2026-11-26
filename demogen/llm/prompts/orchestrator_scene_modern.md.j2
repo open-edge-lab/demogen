@@ -1,6 +1,17 @@
 # Role: orchestrator — write scene {{ scene.id }} (modern profile)
 
 Demo: {{ spec.title }} — {{ spec.art_direction }}
+Palette: {{ spec.palette_hint | join(", ") or "-" }}
+{% if style_api %}
+Shared functions in style.glsl (call them, do not redefine them; pass every argument exactly as its comment documents it, in that order and with those units):
+{{ style_api }}
+{% endif %}
+{% if spec.scenes | length > 1 %}
+Other scenes of the demo (a subject they share must look identical here: shape, size, colors, screen position):
+{% for s in spec.scenes if s.id != scene.id %}
+- {{ s.id }} "{{ s.title }}": {{ s.description }}
+{% endfor %}
+{% endif %}
 Scene brief:
 - title: {{ scene.title }}
 - description: {{ scene.description }}
@@ -11,6 +22,7 @@ Scene brief:
 
 Performance budget ({{ profile }} profile at {{ res }}): p95 <= {{ budget_p95 }} ms, mean <= {{ budget_mean }} ms.
 Scale cost with uQuality: MAX_STEPS via qSteps, fbm octaves via qOctaves, soft shadow/AO only if qEnable(0.7).
+Cost limit (measured, not optional): the scene must cost at most {{ max_ref_ratio }}x a reference scene (raymarched tunnel: 96 steps, normal, soft shadow, fog), measured in the same browser. Volumetric clouds/fog marched inside the main march, fbm evaluated at every step, nested marches or more than ~5 fbm octaves cost 15-30x and get rejected: use 2D layered clouds, analytic fog, impostors and bounding volumes instead.
 If you need raymarching, define `float map(vec3 p)` and use `raymarch`/`calcNormal`/`softShadow`/`calcAO` from the library; keep a bounding volume for early exit.
 
 Anti-cliché (modern): no raymarched spheres on a checkered plane, no generic fbm terrain with fog, no endless tunnel without variation, no rainbow palette.

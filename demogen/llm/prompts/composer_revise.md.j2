@@ -1,0 +1,23 @@
+Revise the soundtrack of the demo "{{ spec.title }}" ({{ "%.1f"|format(spec.duration_s) }} s, {{ "%g"|format(spec.timeline.bpm) }} BPM). The current version was compiled and listened to automatically: fix the problems below and keep what works.
+{% if music_prompt %}
+Music requested by the user (still the priority): {{ music_prompt }}
+{% endif %}
+Problems found:
+{{ issues_text }}
+
+Measured: {{ metrics_text }}
+
+Current code:
+```glsl
+{{ current_src }}
+```
+
+Same contract as before:
+- `void mainAudio(out vec4 o, in float t)`, stereo in o.x / o.y in [-1, 1], `t` in seconds; rhythm only from t and `BPM` (no iTime/uBeat/uBeatPhase/uBar).
+- Library functions available (do not redefine):
+{{ library }}
+- Hits on the beat grid (mean onset error < {{ max_onset_ms }} ms), never silent beyond a 2-bar intro/outro, soft clip with tanh, at least {{ min_realtime }}x faster than realtime (no loops over 8 iterations), GLSL ES 3.00 with float literals.
+{% if sections %}
+Sections: {% for s in sections %}{{ s.id }} bars {{ "%g"|format(s.start_bar) }}–{{ "%g"|format(s.end_bar) }}{% if not loop.last %}; {% endif %}{% endfor %}
+{% endif %}
+Answer with one ```json block {"notes": "what you changed"} and one ```glsl block with the complete new code.

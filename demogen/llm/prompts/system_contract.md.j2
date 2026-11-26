@@ -44,8 +44,9 @@ If the payload has `text`: `uniform highp int uText[64]; uniform int uTextLen;` 
 - Use `fwidth`-based AA helpers from `aa.glsl` where needed.
 - Flashes/strobes only via library helpers that respect `uFlashLimit` (`beatFlash`). No full-screen strobe > 3 Hz.
 - Wrap time entering periodic functions with `time.glsl` helpers (fp32 precision on long runs).
-- Output in display space (sRGB) via `finalize(col, uv)` from the style.
-- Retro profile: `iResolution` is the fixed internal resolution (e.g. 320x180), `fragCoord` is in those pixels; finish with `finalize()` which calls `retroFinalize()` (palette quantization + Bayer dithering). No heavy raymarching in retro.
+- Output in display space (sRGB) via `finalize(col, uv)` from the style. `finalize` RETURNS the color: mainImage must assign it, `fragColor = vec4(finalize(col, uv), 1.0);` (calling `finalize(col, uv);` alone writes nothing and the screen stays black).
+- Coordinates: `fragCoord` (0,0) is the BOTTOM-left pixel and y grows UPWARD (as in Shadertoy, unlike image or screen coordinates): "near the bottom of the frame" means a small y, "falls" means y decreases. If you write a sprite's rows top to bottom, index them with a flipped row (`row = H - 1 - y`) or it comes out upside down.
+- Retro profile: `iResolution` is the fixed internal resolution (e.g. 320x180), `fragCoord` is in those pixels; finish with `finalize()` which calls `retroFinalize()` (palette quantization + Bayer dithering). Retro colors are display values (palette hex / 255) quantized as they are: never convert them to linear (`srgb2lin`, `pow(c, 2.2)`) or they snap to the wrong palette entries. No heavy raymarching in retro.
 
 ## Library API reference
 

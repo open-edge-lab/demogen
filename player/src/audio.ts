@@ -108,6 +108,8 @@ export class AudioEngine {
   private ctx: AudioContext | null;
   private ownsCtx: boolean;
   private master: GainNode | null = null;
+  private vol = 1;
+  private mute = false;
   private sources: AudioBufferSourceNode[] = [];
   private nextChunkIndex = 0;
   private nextStartAt = 0;
@@ -151,7 +153,7 @@ export class AudioEngine {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.tex, 0);
     if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
-      throw new Error("FBO audio non completo");
+      throw new Error("incomplete audio FBO");
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.vao = gl.createVertexArray()!;
@@ -162,6 +164,15 @@ export class AudioEngine {
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
+  }
+
+  /** Durata del loop in secondi (0 = niente loop): vale dai blocchi renderizzati dopo. */
+  setLoopDur(s: number): void {
+    this.loopDurS = Math.max(0, s);
+  }
+
+  get sampleRateHz(): number {
+    return this.sampleRate;
   }
 
   get chunkDur(): number {
@@ -225,10 +236,21 @@ export class AudioEngine {
     }
     if (!this.master) {
       this.master = this.ctx.createGain();
-      this.master.gain.value = 0.9;
+      this.master.gain.value = this.gainValue();
       this.master.connect(this.ctx.destination);
     }
     if (this.ctx.state !== "running") await this.ctx.resume();
+  }
+
+  /** Volume 0..1 e mute: rampa di 15 ms sul guadagno master (niente click). Valgono anche prima dello sblocco. */
+  setVolume(v: number, muted = this.mute): void {
+    this.vol = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 1));
+    this.mute = muted;
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.gainValue(), this.ctx.currentTime, 0.015);
+  }
+
+  private gainValue(): number {
+    return this.mute ? 0 : 0.9 * this.vol; // 0.9: margine sotto il clip a volume pieno
   }
 
   get locked(): boolean {

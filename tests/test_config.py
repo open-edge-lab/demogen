@@ -99,7 +99,7 @@ def test_inherit_eredita_campi_e_override_espliciti() -> None:
 
 
 def test_inherit_ciclico_errore() -> None:
-    with pytest.raises(ValueError, match="ciclic"):
+    with pytest.raises(ValueError, match="cyclic"):
         _cfg({"a": {"inherit": "b"}, "b": {"inherit": "a"}})
 
 
@@ -171,13 +171,13 @@ def test_ensure_config_avvisa_se_il_path_non_e_ignorato(
     _interactive(monkeypatch, key="sk-x")
     ensure_config(tmp_path / "mia-config.yaml", interactive=True)
     out = capsys.readouterr().out
-    assert "ATTENZIONE" in out
-    assert "non verra' mai committata" not in out
+    assert "WARNING" in out
+    assert "will never be committed" not in out
 
 
 def test_ensure_config_declined_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _interactive(monkeypatch, answer="n")
-    with pytest.raises(FileNotFoundError, match="annullata"):
+    with pytest.raises(FileNotFoundError, match="cancelled"):
         ensure_config(tmp_path / "demogen.yaml", interactive=True)
     assert not (tmp_path / "demogen.yaml").exists()
 

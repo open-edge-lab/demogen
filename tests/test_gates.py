@@ -19,11 +19,39 @@ def _frame(v: int, color=(0, 0, 0)) -> np.ndarray:
     return img
 
 
-def test_gate_nero_major() -> None:
+def test_gate_scena_tutta_nera_blocker_quasi_nera_major() -> None:
+    # tutta nera = rotta (run reale: mainImage non scriveva fragColor), non una scelta artistica
     frames = [np.zeros((16, 16, 3), dtype=np.uint8) for _ in range(4)]
-    m = video_metrics(frames)
-    issues = run_gates({"video": m}, CFG)
-    assert any(i.severity == "major" and "nero" in i.description for i in issues)
+    issues = run_gates({"video": video_metrics(frames)}, CFG)
+    assert any(i.severity == "blocker" and "entirely black" in i.description and "fragColor" in i.suggested_fix
+               for i in issues)
+    issues = run_gates({"video": {"black_ratio": 0.93}}, CFG)
+    assert [i.severity for i in issues if "black" in i.description] == ["major"]
+
+
+def _perf(r95: float, rmean: float, sw: bool = True) -> dict:
+    return {"profile": "modern", "p95_ms": r95 * 25.0, "mean_ms": rmean * 25.0, "resolution": [480, 270],
+            "gpu": "ANGLE (SwiftShader Device)" if sw else "ANGLE (Intel UHD 620)",
+            "ref_ms": 25.0, "ref_ratio_p95": r95, "ref_ratio_mean": rmean}
+
+
+def test_gate_perf_relativo_vale_anche_su_swiftshader() -> None:
+    # liminal-gate: 29× il riferimento su SwiftShader → bloccante (prima: solo "info")
+    issues = run_gates({"perf": _perf(29.0, 27.0)}, CFG)
+    rel = [i for i in issues if "reference scene" in i.description]
+    assert [i.severity for i in rel] == ["blocker"]
+    assert "29.0×" in rel[0].description and "volumes" in rel[0].suggested_fix
+    # le scene degli esempi (0,5–1×) passano; media oltre 3× ma p95 sotto 4× → major
+    assert not [i for i in run_gates({"perf": _perf(1.0, 0.9)}, CFG) if "reference scene" in i.description]
+    mid = [i for i in run_gates({"perf": _perf(3.8, 3.4)}, CFG) if "reference scene" in i.description]
+    assert [i.severity for i in mid] == ["major"]
+
+
+def test_gate_perf_relativo_in_s9_e_un_avviso() -> None:
+    issues = run_gates({"perf": _perf(29.0, 27.0)}, CFG, perf_blocking=False)
+    rel = [i for i in issues if "reference scene" in i.description]
+    assert [i.severity for i in rel] == ["major"] and "delivered anyway" in rel[0].description
+    assert not any(i.severity == "blocker" for i in issues)
 
 
 def test_gate_nan_blocker() -> None:
@@ -39,12 +67,12 @@ def test_gate_perf_p95_blocker_e_mean_major() -> None:
             "gpu_load_est": 5.0 / 16.7, "hotspots": [{"t": 3.0, "ms": 12.0}]}
     issues = run_gates({"perf": perf}, CFG)
     assert any(i.severity == "blocker" and "p95" in i.description for i in issues)
-    assert any(i.severity == "major" and "carico medio" in i.description for i in issues)
+    assert any(i.severity == "major" and "average load" in i.description for i in issues)
     # p95 nel budget ma mean alto → solo major (consumo), niente blocker perf
     perf2 = {"profile": "modern", "p95_ms": 5.0, "mean_ms": 4.5, "gpu_load_est": 0.27, "hotspots": []}
     issues2 = run_gates({"perf": perf2}, CFG)
     assert not any(i.severity == "blocker" and "p95" in i.description for i in issues2)
-    assert any(i.severity == "major" and "carico medio" in i.description for i in issues2)
+    assert any(i.severity == "major" and "average load" in i.description for i in issues2)
 
 
 CELLS = 256  # griglia 16×16 dell'harness
@@ -134,7 +162,7 @@ def test_flash_rosso_contato_a_coppie() -> None:
     assert fast.max_red_flashes_per_s > 3 and fast.red_flash_events > 0
     assert not fast.passed
     issues = run_gates({"flash": fast.model_dump()}, CFG)
-    assert any(i.severity == "blocker" and "rossi" in i.description for i in issues)
+    assert any(i.severity == "blocker" and "red" in i.description for i in issues)
     # una sola transizione verso il rosso (o un rosso a 1 Hz) non è più un blocker
     slow = analyze_flash(_seq(_square(1.0), rgb=red), fps=FPS, red_flash=True)
     assert slow.passed
@@ -146,7 +174,7 @@ def test_gate_perf_scalato_alla_risoluzione_del_budget() -> None:
             "gpu": "ANGLE (NVIDIA GeForce)", "hotspots": []}
     issues = run_gates({"perf": perf}, CFG)
     blk = [i for i in issues if i.severity == "blocker"]
-    assert blk and "stimato" in blk[0].description
+    assert blk and "estimated" in blk[0].description
     # alla risoluzione del budget nessuna scala
     perf_full = {**perf, "resolution": (1920, 1080)}
     assert not any(i.severity == "blocker" for i in run_gates({"perf": perf_full}, CFG))
@@ -170,7 +198,7 @@ def test_gate_payload_fuori_limite() -> None:
 
 def test_gate_compilazione_lenta() -> None:
     issues = run_gates({"startup": {"compile_total_ms": 5000.0}}, CFG)
-    assert any(i.severity == "major" and "compilazione" in i.description for i in issues)
+    assert any(i.severity == "major" and "compile" in i.description for i in issues)
 
 
 def test_video_metrics_loop_seam_sui_frame_della_cucitura() -> None:

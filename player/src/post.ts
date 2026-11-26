@@ -60,7 +60,7 @@ function makeProg(gl: WebGL2RenderingContext, frag: string): WebGLProgram {
     if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
       const log = gl.getShaderInfoLog(s);
       gl.deleteShader(s);
-      throw new Error(`post: compilazione fallita: ${log}`);
+      throw new Error(`post: compile failed: ${log}`);
     }
     return s;
   };
@@ -82,7 +82,7 @@ function makeProg(gl: WebGL2RenderingContext, frag: string): WebGLProgram {
   gl.deleteShader(fs);
   if (!ok) {
     gl.deleteProgram(p);
-    throw new Error(`post: link fallito: ${log}`);
+    throw new Error(`post: link failed: ${log}`);
   }
   return p;
 }
@@ -116,11 +116,11 @@ export class Post {
     }
   }
 
-  /** Applica il bloom (se params non null) e blitta il risultato sul target corrente. */
-  apply(sceneTex: WebGLTexture, outW: number, outH: number, params: BloomParams | null): void {
+  /** Applica il bloom (se params non null) e blitta il risultato sul target corrente, angolo in (x, y). */
+  apply(sceneTex: WebGLTexture, outW: number, outH: number, params: BloomParams | null, x = 0, y = 0): void {
     const gl = this.gl;
     if (!params) {
-      this.comp.blit(sceneTex, outW, outH);
+      this.comp.blit(sceneTex, outW, outH, x, y);
       return;
     }
     resizeFBO(gl, this.halfA, Math.max(1, outW >> 2), Math.max(1, outH >> 2));
@@ -150,7 +150,7 @@ export class Post {
     }
     // add sul framebuffer corrente (canvas o FBO di output)
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, outW, outH);
+    gl.viewport(x, y, outW, outH);
     gl.useProgram(this.add);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, sceneTex);

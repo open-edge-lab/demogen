@@ -12,7 +12,7 @@ MARKER = re.compile(r"^///\s*@fn\s+(\w+)\s*$", re.MULTILINE)
 
 
 def generate_api_reference(lib_dir: Path, out_path: Path | None = None) -> str:
-    lines = ["# Libreria GLSL demogen (GLSL ES 3.00)", ""]
+    lines = ["# demogen GLSL library (GLSL ES 3.00)", ""]
     for path in sorted(lib_dir.rglob("*.glsl")):
         text = path.read_text(encoding="utf-8")
         rel = path.relative_to(lib_dir)

@@ -2,9 +2,17 @@
   "name": "demogen",
   "private": true,
   "version": "0.1.0",
+  "description": "Offline generator of realtime demoscene demos from a text prompt",
+  "author": "Andrea Nucciarelli (Open Edge Consulting)",
+  "license": "MIT",
   "workspaces": ["player"],
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
+    "menu": "node scripts/run.mts",
     "build": "npm run build --workspace player",
-    "test": "npm test --workspace player"
+    "test": "npm test --workspace player",
+    "typecheck:scripts": "tsc -p scripts/tsconfig.json"
   }
 }

@@ -55,7 +55,11 @@ pricing:                                 # usato se il provider non dà il costo
 budget:
   max_iterations_per_scene: 4
   max_fix_attempts: 3
-  max_total_cost_usd: 5.0
+  max_total_cost_usd: 5.0       # tetto per singola generazione (o --max-cost)
+  max_daily_cost_usd: null      # tetto giornaliero su tutte le generazioni (null = nessuno)
+  max_monthly_cost_usd: null    # tetto mensile su tutte le generazioni (null = nessuno)
+  max_calls_per_run: null       # numero massimo di chiamate LLM per generazione
+  # la spesa per giorno/mese si somma dal registro locale <cache_dir>/spend.jsonl; `demogen budget` la mostra
   max_wall_minutes: 60
   llm_concurrency: 4
 

@@ -120,7 +120,7 @@ def test_verify_identity_accetta_rifiuta() -> None:
     assert not r2.ok
     # pow con base negativa è indefinito in GLSL: il claim su sin(x) < 0 non può passare
     r3 = verify_claim(req("identity", "pow(sin(x), 2.0) + pow(cos(x), 2.0) - 1.0", claim))
-    assert not r3.ok and "punti valutati" in r3.detail
+    assert not r3.ok and "points evaluated" in r3.detail
 
 
 # ---------------------------------------------------------------- batch G: verifica più severa
@@ -129,7 +129,7 @@ def test_verify_sdf_invertita_rifiutata() -> None:
     # 1 - |p| ha entrambi i segni e |grad| = 1, ma è negativa FUORI: non è una SDF con dentro negativo
     r = verify_claim(req("sdf", "1.0 - len2(x, y)", {"domain": [[-2, 2], [-2, 2]], "samples": 48},
                          inputs={"x": "float", "y": "float"}))
-    assert not r.ok and "bordo>0: False" in r.detail
+    assert not r.ok and "boundary>0: False" in r.detail
 
 
 def test_verify_sdf_punto_inside() -> None:
@@ -165,7 +165,7 @@ def test_verify_lipschitz_senza_punti_valutati_rifiutato() -> None:
     # sqrt di un argomento sempre negativo: nessun punto si valuta (prima: max_ratio=0 → accettato)
     r = verify_claim(req("lipschitz", "sqrt(-1.0 - x * x)", {"bound": 1.0, "domain": [[-1, 1]]},
                          inputs={"x": "float"}))
-    assert not r.ok and "punti valutati" in r.detail
+    assert not r.ok and "points evaluated" in r.detail
 
 
 def test_verify_lipschitz_coppie_vicine() -> None:
@@ -233,7 +233,7 @@ def test_oracle_firma_nell_ordine_di_inputs() -> None:
 
 
 @pytest.mark.parametrize(("rid", "why"), [
-    ("1abc", "non valido"), ("main", "riservato"), ("gl_x", "riservato"), ("a b", "non valido"),
+    ("1abc", "invalid"), ("main", "reserved"), ("gl_x", "reserved"), ("a b", "invalid"),
 ])
 def test_oracle_id_validato(rid: str, why: str) -> None:
     r = run_math_oracle([MathRequest(id=rid, kind="identity", description="", expr="x - x",
@@ -248,8 +248,8 @@ def test_oracle_id_duplicato_o_della_libreria() -> None:
     r = run_math_oracle([mk("zero"), mk("zero"), mk("hash11")], reserved_names={"hash11"})
     st = [(x.status, x.reason) for x in r.results]
     assert st[0][0] == "accepted"
-    assert st[1][0] == "rejected" and "duplicato" in st[1][1]
-    assert st[2][0] == "rejected" and "libreria" in st[2][1]
+    assert st[1][0] == "rejected" and "duplicate" in st[1][1]
+    assert st[2][0] == "rejected" and "library" in st[2][1]
 
 
 # ---------------------------------------------------------------- watchdog psutil
@@ -258,7 +258,7 @@ def test_watchdog_uccide_per_memoria() -> None:
     from demogen.math.safe_parse import SandboxKilled, run_isolated
 
     code = "a = []\nwhile True:\n    a.append(bytearray(20_000_000))\n"
-    with pytest.raises(SandboxKilled, match="memoria"):
+    with pytest.raises(SandboxKilled, match="memory"):
         run_isolated(code, "", timeout_s=30.0, max_rss_mb=200)
 
 
@@ -331,9 +331,9 @@ def test_oracle_accetta_veri_rifiuta_falsi_e_malevoli() -> None:
     assert by_id["sdf_cerchio"].status == "accepted"
     assert by_id["periodo"].status == "accepted"
     assert by_id["sdf_falso"].status == "rejected"
-    assert "falso" in by_id["sdf_falso"].reason or "segno" in by_id["sdf_falso"].reason
+    assert "false" in by_id["sdf_falso"].reason or "sign" in by_id["sdf_falso"].reason
     assert by_id["malevolo"].status == "rejected"
-    assert "non sicura" in by_id["malevolo"].reason
+    assert "unsafe" in by_id["malevolo"].reason
     assert by_id["kind_ignoto"].status == "rejected"
     assert "sdf_cerchio" in res.math_glsl and "periodo" in res.math_glsl
     assert "sdf_falso" not in res.math_glsl and "malevolo" not in res.math_glsl

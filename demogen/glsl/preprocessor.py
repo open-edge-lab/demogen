@@ -30,20 +30,20 @@ class SourceMap:
     def original_line(self, assembled_line: int) -> tuple[str, int]:
         if 0 < assembled_line <= len(self.entries):
             return self.entries[assembled_line - 1]
-        return ("<sconosciuto>", assembled_line)
+        return ("<unknown>", assembled_line)
 
 
 def _resolve_include(rel: str, including_dir: Path | None, roots: list[Path], where: str) -> Path:
     if PurePosixPath(rel).is_absolute() or Path(rel).is_absolute() or re.match(r"^[A-Za-z]:", rel):
-        raise ValueError(f"#include con path assoluto non ammesso: {rel!r} ({where})")
+        raise ValueError(f"#include with an absolute path is not allowed: {rel!r} ({where})")
     candidates = ([including_dir] if including_dir else []) + roots
     for base in candidates:
         inc = (base / rel).resolve()
         if not any(inc.is_relative_to(r) for r in roots):
-            raise ValueError(f"#include fuori dalle cartelle ammesse: {rel!r} ({where})")
+            raise ValueError(f"#include outside the allowed folders: {rel!r} ({where})")
         if inc.exists():
             return inc
-    raise FileNotFoundError(f"#include non trovato: {rel} ({where})")
+    raise FileNotFoundError(f"#include not found: {rel} ({where})")
 
 
 def preprocess(src: str, base_dir: Path | None = None, max_depth: int = 8) -> tuple[str, SourceMap]:
@@ -55,7 +55,7 @@ def preprocess(src: str, base_dir: Path | None = None, max_depth: int = 8) -> tu
 
     def expand(text: str, fname: str, here: Path | None, stack: list[str]) -> None:
         if len(stack) > max_depth:
-            raise ValueError(f"#include troppo annidati (>{max_depth}): {' -> '.join(stack)}")
+            raise ValueError(f"#include nested too deeply (>{max_depth}): {' -> '.join(stack)}")
         for lineno, line in enumerate(text.splitlines(), start=1):
             m = _INCLUDE_RE.match(line)
             if not m:
@@ -65,7 +65,7 @@ def preprocess(src: str, base_dir: Path | None = None, max_depth: int = 8) -> tu
             inc = _resolve_include(m.group(1), here, roots, f"{fname}:{lineno}")
             key = str(inc)
             if key in stack:
-                raise ValueError(f"#include ciclico: {' -> '.join([*stack, key])}")
+                raise ValueError(f"cyclic #include: {' -> '.join([*stack, key])}")
             if inc in included:
                 continue  # include-once
             included.add(inc)

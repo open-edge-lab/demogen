@@ -103,6 +103,15 @@ class Harness:
             {"times": times, "width": width, "height": height},
         )
 
+    def render_audio_array(self, t0: float, blocks: int):
+        """Blocchi audio da t0 come ndarray float32 stereo interleaved, con frequenza di campionamento
+        e ms spesi a calcolarli nel browser (senza il trasferimento). → (x, sr, ms)."""
+        import numpy as np
+
+        r = self.page.evaluate("(o) => window.__demogen.renderAudioB64(o)", {"t0": t0, "blocks": blocks})
+        x = np.frombuffer(base64.b64decode(r["data"]), dtype="<f4").astype(np.float32)
+        return x, int(r["sr"]), float(r["ms"])
+
     def render_audio(self, t0: float, blocks: int) -> list[list[float]]:
         """Fase 2: renderizza `blocks` blocchi audio GPU da t0 (s); torna sample stereo interleaved."""
         return self.page.evaluate(

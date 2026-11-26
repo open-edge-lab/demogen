@@ -1,0 +1,18 @@
+{
+  "name": "whisker-hunt",
+  "bpm": 128,
+  "beats_per_bar": 4,
+  "loop": false,
+  "common": "whisker_common.glsl",
+  "render": {
+    "profile": "retro",
+    "retro": { "internal_resolution": [320, 180], "upscale": "nearest" }
+  },
+  "quality": { "target_fps": 60, "min_scale": 0.75 },
+  "scenes": [
+    { "id": "wake", "src": "shaders/whisker_wake.glsl", "start_bar": 0, "bars": 1, "transition_in": "cut", "transition_bars": 0 },
+    { "id": "idle", "src": "shaders/whisker_idle.glsl", "start_bar": 1, "bars": 1, "transition_in": "crossfade", "transition_bars": 0.125 },
+    { "id": "hunt", "src": "shaders/whisker_hunt.glsl", "start_bar": 2, "bars": 2, "transition_in": "cut", "transition_bars": 0 },
+    { "id": "fade", "src": "shaders/whisker_fade.glsl", "start_bar": 4, "bars": 0.666667, "transition_in": "crossfade", "transition_bars": 0.125 }
+  ]
+}

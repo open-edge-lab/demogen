@@ -40,9 +40,9 @@ def test_demo_m1_golden_swiftshader(harness) -> None:
     for t, png in zip(TIMES, pngs):
         golden_path = GOLDEN / f"m1_t{t}.png"
         if not golden_path.exists():
-            pytest.fail(f"golden mancante: {golden_path} (DEMOGEN_UPDATE_GOLDEN=1 per rigenerare)")
+            pytest.fail(f"missing golden: {golden_path} (DEMOGEN_UPDATE_GOLDEN=1 to regenerate it)")
         a = np.asarray(Image.open(io.BytesIO(png)).convert("RGB"), dtype=float)
         b = np.asarray(Image.open(golden_path).convert("RGB"), dtype=float)
-        assert a.max() > 10, f"t={t}: frame nero"
+        assert a.max() > 10, f"t={t}: black frame"
         diff = float(np.abs(a - b).mean())
-        assert diff < 3.0, f"t={t}: diff media {diff:.2f} > 3.0"
+        assert diff < 3.0, f"t={t}: mean diff {diff:.2f} > 3.0"

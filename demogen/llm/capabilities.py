@@ -28,7 +28,7 @@ CACHE_VERSION = 2  # v2: json_schema = structured_outputs (v1 usava response_for
 class Capabilities:
     vision: bool
     json_schema: bool
-    source: str  # "openrouter" | "config" | "default-prudente" | "cache"
+    source: str  # "openrouter" | "config" | "conservative-default" | "cache"
 
 
 def _cache_path(cache_dir: Path, base_url: str, model: str) -> Path:
@@ -61,7 +61,7 @@ def _from_openrouter_catalog(cfg: Config, role: str) -> Capabilities | None:
             json_schema = "structured_outputs" in params
             return Capabilities(vision=vision, json_schema=json_schema, source="openrouter")
     return Capabilities(
-        vision=False, json_schema=False, source="openrouter (modello non in catalogo)"
+        vision=False, json_schema=False, source="openrouter (model not in catalog)"
     )
 
 
@@ -100,9 +100,9 @@ def _detect_auto(cfg: Config, role: str, cache_dir: Path | None) -> Capabilities
         caps = _from_openrouter_catalog(cfg, role)
     except (httpx.HTTPError, ValueError) as e:
         # catalogo irraggiungibile o malformato: default prudente, NON in cache (si riprova)
-        return Capabilities(vision=False, json_schema=False, source=f"default-prudente ({type(e).__name__})")
+        return Capabilities(vision=False, json_schema=False, source=f"conservative-default ({type(e).__name__})")
     if caps is None:
         # openai_compatible generico: default prudente
-        caps = Capabilities(vision=False, json_schema=False, source="default-prudente")
+        caps = Capabilities(vision=False, json_schema=False, source="conservative-default")
     cpath.write_text(json.dumps({"v": CACHE_VERSION, "ts": time.time(), "caps": caps.__dict__}), encoding="utf-8")
     return caps

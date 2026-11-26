@@ -35,8 +35,8 @@ def critique(
         client = LLMClient(cfg, role, log_dir=log_dir, budget=budget)
     caps = detect_capabilities(cfg, role)
     if not caps.vision:
-        raise RuntimeError(f"il ruolo {role} non ha vision: critica degradada solo sulle metriche non disponibile qui")
-    content: list[dict] = [{"type": "text", "text": prompt + "\n\nMetriche (JSON):\n" + metrics_json}]
+        raise RuntimeError(f"role {role} has no vision: a degraded metrics-only critique is not available here")
+    content: list[dict] = [{"type": "text", "text": prompt + "\n\nMetrics (JSON):\n" + metrics_json}]
     for p in images:
         content.append(_img_part(p))
     messages = [{"role": "user", "content": content}]

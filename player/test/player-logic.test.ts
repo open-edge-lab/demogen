@@ -7,7 +7,7 @@ import { PlaybackClock } from "../src/clock";
 import { MAX_PAYLOAD_BYTES, parsePayload, textByteLength, textToUniform } from "../src/format";
 import { flashLimitFor, SAFE_FLASH_LIMIT } from "../src/player";
 import { buildHeader, detectMap } from "../src/programs";
-import { QualityController } from "../src/quality";
+import { DEFAULT_LIMITS, QualityController } from "../src/quality";
 
 describe("PlaybackClock", () => {
   it("pause conserva la posizione e play riprende da lì", () => {
@@ -83,6 +83,35 @@ describe("QualityController — pacing a refresh diversi", () => {
   });
 });
 
+describe("PlaybackClock — loop cambiato al volo", () => {
+  it("disattivare il loop riporta la posizione dentro la durata (niente 'fine' immediata)", () => {
+    let now = 0;
+    const c = new PlaybackClock(() => now, 10, true);
+    c.play();
+    now = 25000; // 25 s in loop: posizione visibile 5 s
+    c.pause();
+    c.setLoop(false);
+    expect(c.loop).toBe(false);
+    expect(c.time()).toBeCloseTo(5);
+    expect(c.ended()).toBe(false);
+  });
+
+  it("attivare il loop a demo finita riparte dall'inizio", () => {
+    let now = 0;
+    const c = new PlaybackClock(() => now, 10, false);
+    c.play();
+    now = 12000;
+    expect(c.ended()).toBe(true);
+    c.pause();
+    c.setLoop(true);
+    expect(c.ended()).toBe(false);
+    expect(c.time()).toBeCloseTo(0);
+    c.play();
+    now += 3000;
+    expect(c.time()).toBeCloseTo(3);
+  });
+});
+
 describe("QualityController — scala fino a minScale", () => {
   it("scende fino a minScale, poi uQuality, poi bloom", () => {
     const qc = new QualityController({ targetFps: 60, minScale: 0.5, bloom: true });
@@ -94,6 +123,19 @@ describe("QualityController — scala fino a minScale", () => {
     expect(qc.state.scale).toBe(0.5);
     expect(qc.state.uQuality).toBe(0);
     expect(qc.state.bloom).toBe(false);
+  });
+
+  it("di default una demo lenta scende fino a 1/4 della risoluzione", () => {
+    // run reale: shader da ~480 ms a 1080p su una GPU integrata; a 0,5 non bastava
+    const qc = new QualityController(DEFAULT_LIMITS);
+    expect(DEFAULT_LIMITS.minScale).toBe(0.25);
+    let now = 0;
+    for (let i = 0; i < 4000; i++) {
+      now += 100;
+      qc.update(100, now);
+    }
+    expect(qc.state.scale).toBe(0.25);
+    expect(qc.scales).toEqual([1, 0.85, 0.7, 0.5, 0.35, 0.25]);
   });
 
   it("minScale non tra i gradini standard è comunque raggiunto", () => {
@@ -131,7 +173,7 @@ describe("parsePayload — validazione", () => {
   it("limite di 1 MB anche senza rawBytes", () => {
     const p = clone();
     p.common = "x".repeat(MAX_PAYLOAD_BYTES + 10);
-    expect(() => parsePayload(p)).toThrow(/troppo grande/);
+    expect(() => parsePayload(p)).toThrow(/too large/);
   });
 
   it("timeline.bpm, beats_per_bar e bars devono essere > 0", () => {
@@ -156,13 +198,13 @@ describe("parsePayload — validazione", () => {
   it("id di scena che sono chiavi del prototipo non passano", () => {
     const p = clone();
     p.timeline.scenes[0].id = "toString";
-    expect(() => parsePayload(p)).toThrow(/senza sorgente/);
+    expect(() => parsePayload(p)).toThrow(/has no source/);
   });
 
   it("text deve essere stringa (null ammesso)", () => {
     const p = clone();
     p.text = 42;
-    expect(() => parsePayload(p)).toThrow(/text/);
+    expect(() => parsePayload(p)).toThrow(/text must be a string/);
     const q = clone();
     q.text = null;
     expect(() => parsePayload(q)).not.toThrow();

@@ -393,7 +393,7 @@ def test_capabilities_catalogo_irraggiungibile_default_prudente(tmp_path: Path) 
     )
     caps = detect_capabilities(cfg, "critic")
     assert caps.vision is False and caps.json_schema is False
-    assert caps.source.startswith("default-prudente")
+    assert caps.source.startswith("conservative-default")
 
 
 def test_redact() -> None:
@@ -414,7 +414,7 @@ def test_init_cli(tmp_path: Path) -> None:
 def test_init_cli_avvisa_se_il_path_non_e_ignorato(tmp_path: Path) -> None:
     res = CliRunner().invoke(app, ["init", "--out", str(tmp_path / "altro.yaml")])
     assert res.exit_code == 0, res.output
-    assert "ATTENZIONE" in res.output
+    assert "WARNING" in res.output
 
 
 def test_client_openrouter_senza_chiave_errore_esplicito() -> None:
@@ -422,7 +422,7 @@ def test_client_openrouter_senza_chiave_errore_esplicito() -> None:
         providers={"or": ProviderConfig(type="openrouter", api_key="<INSERISCI-OPENROUTER-API-KEY>")},
         roles={"critic": RoleConfig(provider="or", model="m")},
     )
-    with pytest.raises(ValueError, match="chiave API mancante"):
+    with pytest.raises(ValueError, match="missing API key"):
         LLMClient(cfg, "critic")
 
 
@@ -449,7 +449,7 @@ def test_models_check_ruolo_senza_chiave_non_blocca_gli_altri(tmp_path: Path) ->
         )
         res = CliRunner().invoke(app, ["models", "check", "--config", str(cfg_path)])
         assert res.exit_code == 0, res.output
-        assert "chiave API mancante" in res.output
+        assert "missing API key" in res.output
         assert "orchestrator" in res.output and "ok" in res.output
 
 
@@ -479,3 +479,20 @@ def test_models_check_cli_con_fake(tmp_path: Path) -> None:
         res = runner.invoke(app, ["models", "check", "--config", str(cfg_path)])
         assert res.exit_code == 0, res.output
         assert "orchestrator" in res.output and "ok" in res.output
+
+
+def test_models_check_mostra_l_errore_del_provider(tmp_path: Path) -> None:
+    body = {"error": {"message": "This request requires more credits, or fewer max_tokens.", "code": 402}}
+    with FakeOpenAI([(402, body)]) as fake:
+        cfg_path = tmp_path / "demogen.yaml"
+        cfg_path.write_text(json.dumps({
+            "providers": {"test": {"type": "openai_compatible", "base_url": fake.url}},
+            "roles": {"orchestrator": {"provider": "test", "model": "fake-1", "vision": False, "json_schema": False}},
+            "log_dir": str(tmp_path / "logs"),
+            "cache_dir": str(tmp_path / "cache"),
+        }))
+        res = CliRunner().invoke(app, ["models", "check", "--config", str(cfg_path)])
+    assert res.exit_code == 0, res.output
+    assert "insufficient credit on the LLM provider key (402)" in res.output
+    assert "message:    This request requires more credits" in res.output
+    assert "what to do:" in res.output

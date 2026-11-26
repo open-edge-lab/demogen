@@ -35,51 +35,51 @@ const own = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.c
 
 export function parsePayload(json: unknown, rawBytes?: number): DemoPayload {
   const p = json as DemoPayload;
-  if (!p || typeof p !== "object") throw new Error("Payload non è un oggetto");
+  if (!p || typeof p !== "object") throw new Error("Payload is not an object");
   // il limite vale sempre: se il chiamante non conosce i byte grezzi, si misura il JSON
   const size = rawBytes ?? new TextEncoder().encode(JSON.stringify(json)).length;
   if (size > MAX_PAYLOAD_BYTES) {
-    throw new Error(`Payload troppo grande: ${size} > ${MAX_PAYLOAD_BYTES} byte`);
+    throw new Error(`Payload too large: ${size} > ${MAX_PAYLOAD_BYTES} bytes`);
   }
-  if (p.format !== "demogen/1") throw new Error(`Formato non supportato: ${p.format}`);
+  if (p.format !== "demogen/1") throw new Error(`Unsupported format: ${p.format}`);
   if (!p.meta || typeof p.meta.bpm !== "number" || typeof p.meta.duration_s !== "number") {
-    throw new Error("meta mancante o invalido");
+    throw new Error("missing or invalid meta");
   }
   const tl = p.timeline;
   if (!tl || !Array.isArray(tl.scenes) || tl.scenes.length === 0) {
-    throw new Error("timeline.scenes mancante");
+    throw new Error("missing timeline.scenes");
   }
-  if (!pos(tl.bpm) || !pos(tl.beats_per_bar)) throw new Error("timeline.bpm e beats_per_bar devono essere > 0");
+  if (!pos(tl.bpm) || !pos(tl.beats_per_bar)) throw new Error("timeline.bpm and beats_per_bar must be > 0");
   for (const s of tl.scenes) {
     if (typeof s.id !== "string" || typeof s.start_bar !== "number" || !pos(s.bars)) {
-      throw new Error("SceneSlot invalido (id stringa, start_bar numero, bars > 0)");
+      throw new Error("invalid SceneSlot (id string, start_bar number, bars > 0)");
     }
     if (s.transition_in !== undefined && !TRANSITIONS.includes(s.transition_in)) {
-      throw new Error(`scena ${s.id}: transition_in invalido: ${s.transition_in}`);
+      throw new Error(`scene ${s.id}: invalid transition_in: ${s.transition_in}`);
     }
   }
-  if (typeof p.common !== "string") throw new Error("common mancante");
-  if (!p.scenes || typeof p.scenes !== "object") throw new Error("scenes mancante");
+  if (typeof p.common !== "string") throw new Error("missing common");
+  if (!p.scenes || typeof p.scenes !== "object") throw new Error("missing scenes");
   for (const [id, src] of Object.entries(p.scenes)) {
-    if (typeof src !== "string") throw new Error(`scena ${id} non è stringa`);
+    if (typeof src !== "string") throw new Error(`scene ${id} is not a string`);
     if (new TextEncoder().encode(src).length > MAX_SCENE_BYTES) {
-      throw new Error(`scena ${id} troppo grande`);
+      throw new Error(`scene ${id} too large`);
     }
   }
   for (const s of tl.scenes) {
     // hasOwnProperty, non `in`: "toString" o "constructor" non sono scene
-    if (!own(p.scenes, s.id)) throw new Error(`scena ${s.id} senza sorgente in scenes`);
+    if (!own(p.scenes, s.id)) throw new Error(`scene ${s.id} has no source in scenes`);
   }
   if (p.render?.profile !== "modern" && p.render?.profile !== "retro") {
-    throw new Error("render.profile invalido");
+    throw new Error("invalid render.profile");
   }
   if (p.text !== undefined && p.text !== null && typeof p.text !== "string") {
-    throw new Error("text deve essere una stringa");
+    throw new Error("text must be a string");
   }
   if (p.audio !== undefined) {
-    if (typeof p.audio !== "string") throw new Error("audio deve essere una stringa GLSL");
+    if (typeof p.audio !== "string") throw new Error("audio must be a GLSL string");
     if (new TextEncoder().encode(p.audio).length > MAX_SCENE_BYTES) {
-      throw new Error("audio troppo grande");
+      throw new Error("audio too large");
     }
   }
   return p;

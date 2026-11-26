@@ -90,7 +90,7 @@ def test_treeshake_non_ridefinisce_le_funzioni_della_scena() -> None:
 def test_load_library_rifiuta_fn_duplicate(tmp_path: Path) -> None:
     (tmp_path / "a.glsl").write_text("/// @fn f\nfloat f(float x){ return x; }\n", encoding="utf-8")
     (tmp_path / "b.glsl").write_text("/// @fn f\nfloat f(float x){ return 2.0*x; }\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="duplicata"):
+    with pytest.raises(ValueError, match="duplicated"):
         load_library(tmp_path)
 
 
@@ -119,7 +119,7 @@ def test_preprocess_include_once_cicli_e_path_confinati(tmp_path: Path) -> None:
     # ciclo con la catena completa
     (tmp_path / "x.glsl").write_text('#include "y.glsl"\n', encoding="utf-8")
     (tmp_path / "y.glsl").write_text('#include "x.glsl"\n', encoding="utf-8")
-    with pytest.raises(ValueError, match="ciclico.*x.glsl.*y.glsl.*x.glsl"):
+    with pytest.raises(ValueError, match="cyclic.*x.glsl.*y.glsl.*x.glsl"):
         preprocess('#include "x.glsl"\n', base_dir=tmp_path)
     # path fuori dalle cartelle ammesse o assoluti
     (tmp_path.parent / "segreto.glsl").write_text("float s(){ return 0.0; }\n", encoding="utf-8")
@@ -134,7 +134,7 @@ def test_esempi_minificati_compilano(harness) -> None:
     from demogen.bundle.build import build_payload
 
     examples = Path(__file__).resolve().parents[1] / "examples"
-    for spec in ("timeline.json", "audio_chip.timeline.json", "penguin.timeline.json"):
+    for spec in ("timeline.json", "audio_chip.timeline.json", "penguin.timeline.json", "whisker_hunt.timeline.json"):
         payload = build_payload(json.loads((examples / spec).read_text(encoding="utf-8")), examples, do_minify=True)
         res = harness.load(payload)
         assert res["ok"], f"{spec}: " + "\n".join(res["errors"])[:1500]

@@ -92,7 +92,7 @@ def loads_tolerant(text: str) -> Any:
     i, j = s.find("{"), s.rfind("}")
     if i != -1 and j > i:
         return json.loads(s[i : j + 1])
-    raise ValueError("nessun oggetto JSON nella risposta")
+    raise ValueError("no JSON object in the response")
 
 
 def chat_structured(
@@ -121,7 +121,7 @@ def chat_structured(
                 text = e.response.content
                 last_err = e
                 max_tokens = grown_max_tokens(client, max_tokens)  # i modelli con reasoning ne consumano molti
-                err_msg = "la risposta è stata troncata: restituisci un output più compatto"
+                err_msg = "the response was truncated: return a more compact output"
             except APIStatusError as e:
                 if level is not None and e.status_code in _LEVEL_UNSUPPORTED:
                     last_err = e
@@ -133,15 +133,15 @@ def chat_structured(
                     return schema.model_validate(data)
                 except Exception as e:  # noqa: BLE001 - errore di parsing/validazione → riparazione
                     last_err = e
-                    err_msg = f"il tuo output non valida lo schema {schema.__name__}: {e}"
+                    err_msg = f"your output does not validate against the {schema.__name__} schema: {e}"
             if repair < max_repairs:
                 msgs = msgs + [
                     {"role": "assistant", "content": text},
-                    {"role": "user", "content": f"{err_msg}. Restituisci SOLO l'output valido, senza commenti."},
+                    {"role": "user", "content": f"{err_msg}. Return ONLY the valid output, with no comments."},
                 ]
     raise ValueError(
-        f"Output non valido secondo {schema.__name__} dopo tutti i livelli e {max_repairs} "
-        f"riparazioni. Ultimo errore: {last_err}"
+        f"Output not valid for {schema.__name__} after all levels and {max_repairs} "
+        f"repairs. Last error: {last_err}"
     )
 
 

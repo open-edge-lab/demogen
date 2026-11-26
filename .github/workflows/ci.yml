@@ -8,11 +8,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22  # ultima 22.x (>= 22.18: il lanciatore scripts/run.mts è TypeScript senza build)
       - uses: astral-sh/setup-uv@v5
       - run: npm install
       - run: npm run build
       - run: npm run typecheck --workspace player
+      - run: npm run typecheck:scripts
       - run: npm test --workspace player
       - run: uv sync
       - run: uv run playwright install --with-deps chromium

@@ -96,9 +96,12 @@ def test_parse_compile_errors_smista_per_sorgente() -> None:
     errs = ["Error: Errore compilazione shader:\nERROR: 1:2: 'y' : undeclared identifier\n"
             "ERROR: 2:3: 'zzz' : undeclared identifier\nERROR: 0:40: 'q' : boh\n--- sorgente ---\nfloat x;"]
     ce = steps.parse_compile_errors(errs)
-    assert ce.scene == ["riga 3: 'zzz' : undeclared identifier"]
-    assert ce.style == ["riga 2: 'y' : undeclared identifier"]
+    assert ce.scene == ["line 3: 'zzz' : undeclared identifier"]
+    assert ce.style == ["line 2: 'y' : undeclared identifier"]
     assert ce.other and "float x" not in " ".join(ce.other)
+    # stesso risultato col marcatore inglese del player
+    ce_en = steps.parse_compile_errors([errs[0].replace("--- sorgente ---", "--- source ---")])
+    assert ce_en == ce
 
 
 def test_errori_di_compilazione_rimappati_su_scena_e_style(harness, tmp_path: Path) -> None:
@@ -110,8 +113,60 @@ def test_errori_di_compilazione_rimappati_su_scena_e_style(harness, tmp_path: Pa
     res = harness.load(steps.mono_payload(spec, "s1", scene, common))
     assert not res["ok"]
     ce = steps.parse_compile_errors(res["errors"])
-    assert any(e.startswith("riga 3:") and "zzz" in e for e in ce.scene), ce
-    assert any(e.startswith("riga 2:") and "yy" in e for e in ce.style), ce
+    assert any(e.startswith("line 3:") and "zzz" in e for e in ce.scene), ce
+    assert any(e.startswith("line 2:") and "yy" in e for e in ce.style), ce
+
+
+def test_output_lint_fragcolor_mai_assegnato() -> None:
+    # run reale (liminal-gate s3): `finalize(col, uv);` senza assegnare fragColor → scena nera
+    src = "// fragColor nel commento non conta\nvec3 f(){return vec3(1.);}\n" \
+          "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec3 col = f();\n  finalize(col, uv);\n}\n"
+    msg = steps.output_lint(src)
+    assert msg is not None and msg.startswith(f"ERROR: {steps.SRC_SCENE}:3:") and "fragColor" in msg
+    ce = steps.parse_compile_errors([msg])
+    assert ce.scene and "never assigns" in ce.scene[0]  # arriva al fixer come errore della scena
+    for ok in ("void mainImage(out vec4 c, in vec2 p) { c = vec4(1.0); }",
+               "void mainImage(out vec4 c, in vec2 p) { c.rgb = vec3(1.0); c.a = 1.0; }",
+               "void mainImage(out vec4 c, in vec2 p) { shade(c, p); }",  # out passato a una funzione
+               "float notMain(float x) { return x; }"):
+        assert steps.output_lint(ok) is None, ok
+
+
+def test_s4_scena_senza_fragcolor_va_al_fixer(harness, tmp_path: Path) -> None:
+    from demogen.llm.fake import FAKE_STYLE, fake_client_factory
+
+    pipe = Pipeline(Project(tmp_path / "p"), CFG, client_factory=fake_client_factory)
+    pipe.project.write("style.glsl", FAKE_STYLE)
+    # la scena del fixer finto usa una funzione che nel run vero arriva dall'oracolo
+    _math_json(pipe, 1, {"ease_smooth": "float ease_smooth(float t) { return t * t * (3.0 - 2.0 * t); }"})
+    src = ("void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n"
+           "  vec3 col = vec3(0.5);\n  finalize(col, vec2(0.0));\n}\n")
+    ok, fixed, errors = steps.s4_compile(pipe, harness, _spec(), "s1", src, 1)
+    assert ok and not errors
+    assert fixed != src and steps.output_lint(fixed) is None
+    assert pipe.client("fixer").calls == ["fixer:s1"]
+
+
+def test_costo_nel_prompt_di_revisione(tmp_path: Path) -> None:
+    ctx = _Ctx(tmp_path)
+    assert "not measured" in steps.cost_text(ctx, "s1", 1)
+    for v, ratio in ((1, 3.45), (2, 8.8)):
+        ctx.project.write(f"scenes/s1/v{v}.probe/metrics.json", json.dumps({"perf": {"ref_ratio_p95": ratio}}))
+    within, over = steps.cost_text(ctx, "s1", 1), steps.cost_text(ctx, "s1", 2)
+    assert "3.5x" in within and "do not exceed" in within
+    assert "8.8x" in over and "OVER" in over
+    user = steps.P.render("orchestrator_revise.md.j2", scene_id="s1", version=2, current_src="", critique_json="{}",
+                          issues_text="-", history_text="-", math_rejections="-", cost_text=over)
+    assert "8.8x the reference scene, OVER" in user
+
+
+def test_scena_di_riferimento_misurabile(harness) -> None:
+    from demogen.critic.perf_ref import add_ratios, measure_reference
+
+    ref = measure_reference(harness, 160, 90, steps.LIB)
+    assert ref > 0
+    perf = add_ratios({"p95_ms": ref * 6, "mean_ms": ref * 2}, ref)
+    assert perf["ref_ratio_p95"] == pytest.approx(6.0) and perf["ref_ratio_mean"] == pytest.approx(2.0)
 
 
 # ---------------------------------------------------------------- S0 e spec
@@ -143,7 +198,7 @@ def test_s0_tronca_la_timeline_a_120s() -> None:
 def test_demospec_slot_e_scene_coerenti() -> None:
     d = _fake_spec("p", 8.0, 120.0, "modern")
     d["timeline"]["scenes"][1]["id"] = "s9"
-    with pytest.raises(ValidationError, match="stessi id"):
+    with pytest.raises(ValidationError, match="same ids"):
         DemoSpec.model_validate(d)
     d = _fake_spec("p", 8.0, 120.0, "modern")
     d["timeline"]["scenes"][0]["bars"] = 0

@@ -61,7 +61,12 @@ class RoleConfig(BaseModel):
 class BudgetConfig(BaseModel):
     max_iterations_per_scene: int = 4
     max_fix_attempts: int = 3
+    # tetti di consumo LLM (llm/budget.py): per run, per giorno e per mese (su tutte le generazioni,
+    # dal registro <cache_dir>/spend.jsonl), numero di chiamate per run; None = nessun tetto
     max_total_cost_usd: float = 5.0
+    max_daily_cost_usd: float | None = None
+    max_monthly_cost_usd: float | None = None
+    max_calls_per_run: int | None = None
     max_wall_minutes: float = 60.0
     llm_concurrency: int = 4
 
@@ -73,6 +78,10 @@ class RealtimeConfig(BaseModel):
     max_compile_ms_total: float = 1500.0
     max_first_frame_ms: float = 1500.0
     profile_step_s: float = 0.25
+    # gate di perf relativo (critic/perf_ref.py): costo della scena in multipli della scena di
+    # riferimento misurata nello stesso browser alla stessa risoluzione; vale anche su SwiftShader
+    max_ref_ratio_p95: float = 4.0  # oltre: blocker (in S9 solo avviso)
+    max_ref_ratio_mean: float = 3.0  # oltre: major
     # budget ms per profilo: {p95, mean, resolution}
     profiles: dict[str, dict] = Field(
         default_factory=lambda: {
@@ -86,6 +95,11 @@ class AudioConfig(BaseModel):
     prebuffer_s: float = 8.0
     max_render_ms_prebuffer: float = 4000.0
     max_onset_err_ms: float = 5.0  # onset vs griglia beat (dominio dei dati)
+    # musica generata (orchestrator/music.py): sotto questi valori la versione è bloccante
+    min_rms: float = 0.01  # sotto: muta (-40 dBFS)
+    # secondi di musica calcolati per secondo di calcolo: l'esempio chip fa 20-200×; sotto 10× il
+    # calcolo in background ruberebbe frame alla grafica
+    min_realtime_factor: float = 10.0
 
 
 class SafetyConfig(BaseModel):
@@ -136,7 +150,7 @@ class Config(BaseModel):
         for name in self.roles:
             r = resolve_role(self, name)
             if r.provider not in self.providers:
-                raise ValueError(f"Ruolo '{name}': provider '{r.provider}' non definito in providers")
+                raise ValueError(f"Role '{name}': provider '{r.provider}' is not defined in providers")
         return self
 
 
@@ -147,11 +161,11 @@ def is_git_ignored_name(path: Path) -> bool:
 
 def warn_if_not_ignored(path: Path) -> None:
     if is_git_ignored_name(path):
-        print(f"Scritto {path} — e' in .gitignore, non verra' mai committata.")
+        print(f"Wrote {path} — it is in .gitignore and will never be committed.")
     else:
         print(
-            f"Scritto {path}. ATTENZIONE: solo i file '{IGNORED_CONFIG_NAME}' sono in .gitignore; "
-            f"se metti la chiave in `api_key` qui, non committare {path.name} (oppure usa api_key_env)."
+            f"Wrote {path}. WARNING: only files named '{IGNORED_CONFIG_NAME}' are in .gitignore; "
+            f"if you put the key in `api_key` here, do not commit {path.name} (or use api_key_env)."
         )
 
 
@@ -169,24 +183,72 @@ def ensure_config(path: Path, *, interactive: bool | None = None, template: Path
     demo = Path(template) if template is not None else DEMO_TEMPLATE
     if not interactive or not demo.exists():
         raise FileNotFoundError(
-            f"Config non trovata: {path}. Creala con `demogen init` (template {DEMO_TEMPLATE.name}), "
+            f"Config not found: {path}. Create it with `demogen init` (template {DEMO_TEMPLATE.name}), "
             "poi inserisci la chiave OpenRouter in `api_key` (o usa `api_key_env`)."
         )
-    print(f"Config non trovata: {path}")
-    ans = input(f"Creo {path.name} dal template {demo.name}? [S/n] ").strip().lower()
+    print(f"Config not found: {path}")
+    ans = input(f"Create {path.name} from the template {demo.name}? [Y/n] ").strip().lower()
     if ans in ("n", "no"):
-        raise FileNotFoundError(f"Config non trovata: {path} (creazione annullata)")
+        raise FileNotFoundError(f"Config not found: {path} (creation cancelled)")
     text = demo.read_text(encoding="utf-8")
-    key = getpass.getpass("Chiave API OpenRouter (invio = lascia il placeholder): ").strip()
+    key = getpass.getpass("OpenRouter API key (Enter = keep the placeholder): ").strip()
     if key:
         # json.dumps = scalare YAML double-quoted con escape di " e \ (YAML e' superset di JSON)
         text, n = re.subn(r"(?m)^(\s*api_key:).*$", lambda m: f"{m.group(1)} {json.dumps(key)}", text, count=1)
         if n == 0:
-            print("Il template non ha una riga `api_key:`: inseriscila a mano sotto providers.openrouter.")
+            print("The template has no `api_key:` line: add it by hand under providers.openrouter.")
     path.write_text(text, encoding="utf-8")
     warn_if_not_ignored(path)
-    print("Configura i modelli in roles/*/model, poi: demogen models check")
+    print("Set the models in roles/*/model, then: demogen models check")
     return path
+
+
+# opzioni di `demogen budget` → chiavi di `budget:` in demogen.yaml
+BUDGET_KEYS = {
+    "run": "max_total_cost_usd",
+    "daily": "max_daily_cost_usd",
+    "monthly": "max_monthly_cost_usd",
+    "calls": "max_calls_per_run",
+    "minutes": "max_wall_minutes",
+}
+
+
+def set_budget_values(path: Path, values: dict[str, object]) -> None:
+    """Imposta chiavi del blocco `budget:` di demogen.yaml riga per riga.
+
+    Niente riscrittura del YAML intero: commenti, ordine e chiave API restano come sono.
+    `None` scrive `null` (nessun tetto). Se il risultato non è una config valida, il file
+    torna com'era e si solleva l'errore."""
+    import re
+
+    original = path.read_text(encoding="utf-8")
+    lines = original.splitlines()
+    start = next((i for i, ln in enumerate(lines) if re.match(r"^budget:\s*(#.*)?$", ln)), None)
+    if start is None:
+        lines += ["", "budget:"]
+        start = len(lines) - 1
+    end = start + 1
+    while end < len(lines) and (lines[end].startswith((" ", "\t")) or not lines[end].strip()):
+        end += 1
+    while end - 1 > start and not lines[end - 1].strip():  # non dopo le righe vuote finali del blocco
+        end -= 1
+    for key, val in values.items():
+        text = "null" if val is None else (f"{val:g}" if isinstance(val, float) else str(val))
+        pat = re.compile(rf"^(\s+){re.escape(key)}:[^#\n]*?(\s+#.*)?$")
+        for i in range(start + 1, end):
+            m = pat.match(lines[i])
+            if m:
+                lines[i] = f"{m.group(1)}{key}: {text}{m.group(2) or ''}"
+                break
+        else:
+            lines.insert(end, f"  {key}: {text}")
+            end += 1
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        load_config(path, interactive=False)
+    except Exception:
+        path.write_text(original, encoding="utf-8")
+        raise
 
 
 def load_config(path: Path | str | None = None, *, interactive: bool | None = None) -> Config:
@@ -209,15 +271,15 @@ def resolve_role(cfg: Config, role: str, _chain: tuple[str, ...] = ()) -> RoleCo
     I default pydantic del figlio NON sovrascrivono i valori del padre (model_dump exclude_unset).
     """
     if role in _chain:
-        raise ValueError(f"inherit ciclico tra ruoli: {' -> '.join((*_chain, role))}")
+        raise ValueError(f"cyclic inherit between roles: {' -> '.join((*_chain, role))}")
     if role not in cfg.roles:
-        where = f" (inherit da '{_chain[-1]}')" if _chain else ""
-        raise ValueError(f"Ruolo '{role}' non configurato{where}")
+        where = f" (inherited from '{_chain[-1]}')" if _chain else ""
+        raise ValueError(f"Role '{role}' is not configured{where}")
     r = cfg.roles[role]
     if r.inherit is not None:
         base = resolve_role(cfg, r.inherit, (*_chain, role))
         explicit = r.model_dump(exclude_unset=True, exclude={"inherit"})
         r = RoleConfig.model_validate({**base.model_dump(exclude={"inherit"}), **explicit})
     if not r.provider or not r.model:
-        raise ValueError(f"Ruolo '{role}': provider/model mancanti (anche dopo inherit)")
+        raise ValueError(f"Role '{role}': provider/model missing (even after inherit)")
     return r

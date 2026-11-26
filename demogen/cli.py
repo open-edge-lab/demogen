@@ -11,12 +11,23 @@ import typer
 from . import __version__
 from .browser.session import PLAYER_DIR, BrowserSession
 
+# console con code page legacy (cp1252 con output in pipe): un carattere non codificabile (→, ▸, ♪)
+# deve diventare '?' invece di far cadere il comando con UnicodeEncodeError
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure") and (getattr(_stream, "encoding", "") or "").lower() not in ("utf-8", "utf8"):
+        try:
+            _stream.reconfigure(errors="replace")
+        except (ValueError, OSError):
+            pass
+
 app = typer.Typer(
-    help="demogen — generatore offline di demo realtime (motore WebGL2 dual-mode GPU/CPU)",
+    help="demogen — offline generator of realtime demoscene demos (dual-mode WebGL2 engine, GPU/CPU)",
     pretty_exceptions_show_locals=False,  # i locals possono contenere la config (api_key)
 )
-models_app = typer.Typer(help="Interroga i modelli configurati")
+models_app = typer.Typer(help="Query the configured models")
 app.add_typer(models_app, name="models")
+
+MAX_COST_HELP = "Spending cap for this run in USD (overrides budget.max_total_cost_usd)"
 
 
 def _run(cmd: list[str]) -> str | None:
@@ -33,14 +44,14 @@ def _run(cmd: list[str]) -> str | None:
 
 @app.command()
 def doctor() -> None:
-    """Verifica ambiente: tool, browser Playwright, renderer WebGL2 in GPU e CPU."""
+    """Check the environment: tools, Playwright browser, WebGL2 renderer on GPU and CPU."""
     print(f"demogen {__version__} — doctor")
     print(f"python:           {sys.version.split()[0]}")
-    print(f"node:             {_run(['node', '--version']) or 'MANCANTE'}")
-    print(f"npm:              {_run(['npm', '--version']) or 'MANCANTE'}")
+    print(f"node:             {_run(['node', '--version']) or 'MISSING'}")
+    print(f"npm:              {_run(['npm', '--version']) or 'MISSING'}")
     glslang = _run(["glslangValidator", "--version"]) or "mancante (serve dalla Fase 1)"
     print(f"glslangValidator: {glslang}")
-    print(f"ffmpeg:           {_run(['ffmpeg', '-version']) or 'mancante (opzionale)'}")
+    print(f"ffmpeg:           {_run(['ffmpeg', '-version']) or 'missing (optional)'}")
 
     for mode in ("hardware", "swiftshader"):
         channel = "chromium" if mode == "hardware" else None
@@ -61,9 +72,9 @@ def doctor() -> None:
             ]
             print(f"\n[{mode}] renderer = {info['renderer']}")
             print(f"  webgl2={info['webgl2']}  vendor={info['vendor']}")
-            print(f"  max_texture={info['maxTextureSize']}  estensioni chiave: {interesting}")
+            print(f"  max_texture={info['maxTextureSize']}  key extensions: {interesting}")
         except Exception as e:  # noqa: BLE001
-            print(f"\n[{mode}] ERRORE: {e}")
+            print(f"\n[{mode}] ERROR: {e}")
 
 
 def _payload_from_file(path: Path, bpm: float) -> dict:
@@ -104,7 +115,7 @@ def _payload_from_file(path: Path, bpm: float) -> dict:
         "common": common,
         "scenes": {"s1": src},
         "render": {"profile": "modern"},
-        "quality": {"target_fps": 60, "min_scale": 0.5},
+        "quality": {"target_fps": 60, "min_scale": 0.25},
     }
 
 
@@ -122,29 +133,29 @@ def open_player(sess: BrowserSession, payload: dict) -> dict:
 @app.command()
 def play(
     file: Path = typer.Argument(
-        ..., exists=True, readable=True, help=".glsl (scena singola) o timeline.json (demo)"
+        ..., exists=True, readable=True, help=".glsl (single scene) or timeline.json (demo)"
     ),
     gpu: str = typer.Option("auto", help="auto | hardware | swiftshader"),
-    headless: bool = typer.Option(False, help="Avvia il browser in headless"),
-    bpm: float = typer.Option(120.0, help="BPM per uno shader singolo"),
+    headless: bool = typer.Option(False, help="Start the browser headless"),
+    bpm: float = typer.Option(120.0, help="BPM for a single shader"),
 ) -> None:
-    """Rendering realtime in una finestra del browser (server locale 127.0.0.1)."""
+    """Realtime rendering in a browser window (local server on 127.0.0.1)."""
     payload = _payload_from_file(file, bpm)
     with BrowserSession(gpu=gpu, headless=headless) as sess:  # type: ignore[arg-type]
         info = open_player(sess, payload)
         print(f"renderer: {info['renderer']}  (gpu={gpu}, headless={headless})")
-        print("Rendering realtime in corso — chiudi la finestra del browser per terminare.")
+        print("Realtime rendering running — close the browser window to stop.")
         sess.page.wait_for_event("close", timeout=0)
 
 
 @app.command()
 def bundle(
-    spec: Path = typer.Argument(..., exists=True, readable=True, help="timeline.json della demo"),
-    name: str = typer.Option("", help="Nome output (default: dal campo name della spec)"),
-    out: Path = typer.Option(Path("out"), help="Cartella di output"),
-    no_minify: bool = typer.Option(False, help="Disattiva il minify"),
+    spec: Path = typer.Argument(..., exists=True, readable=True, help="timeline.json of the demo"),
+    name: str = typer.Option("", help="Output name (default: the name field of the spec)"),
+    out: Path = typer.Option(Path("out"), help="Output folder"),
+    no_minify: bool = typer.Option(False, help="Disable minification"),
 ) -> None:
-    """Costruisce out/<name>.demo e out/<name>.html (standalone, funziona offline)."""
+    """Build out/<name>.demo and out/<name>.html (standalone, works offline)."""
     from .bundle.build import build_payload, write_bundle
 
     spec_dict = json.loads(spec.read_text(encoding="utf-8"))
@@ -159,14 +170,14 @@ def bundle(
 
 @app.command()
 def probe(
-    file: Path = typer.Argument(..., exists=True, readable=True, help="timeline.json o .demo"),
+    file: Path = typer.Argument(..., exists=True, readable=True, help="timeline.json or .demo"),
     gpu: str = typer.Option("swiftshader", help="hardware | swiftshader"),
-    frames: int = typer.Option(8, help="Numero di frame catturati"),
+    frames: int = typer.Option(8, help="Number of captured frames"),
     width: int = typer.Option(640),
     height: int = typer.Option(360),
-    out: Path = typer.Option(Path("out"), help="Cartella per i PNG"),
+    out: Path = typer.Option(Path("out"), help="Folder for the PNGs"),
 ) -> None:
-    """Carica la demo nell'harness, cattura frame + profilo ms e salva PNG in out/."""
+    """Load the demo in the harness, capture frames + ms profile and save PNGs in out/."""
     from .browser.harness import Harness
     from .browser.perf_lane import perf_lane
 
@@ -180,7 +191,7 @@ def probe(
     with Harness(gpu=gpu, headless=True, channel=channel) as h:  # type: ignore[arg-type]
         res = h.load(payload)
         if not res["ok"]:
-            print("ERRORI di compilazione:")
+            print("Compile errors:")
             for e in res["errors"]:
                 print(e[:2000])
             raise typer.Exit(1)
@@ -191,34 +202,34 @@ def probe(
             (out / f"probe_{file.stem}_{gpu}_f{i:02d}_t{times[i]}s.png").write_bytes(png)
         with perf_lane():
             prof = h.profile(times, width, height, repeats=3)
-        print(f"profilo ({prof['method']}) a {width}x{height}:")
+        print(f"profile ({prof['method']}) at {width}x{height}:")
         for t, ms in prof["samples"].items():
             print(f"  t={t}s  {ms:.3f} ms")
-        print(f"PNG salvati in {out}/")
+        print(f"PNGs saved in {out}/")
 
 
 @app.command()
 def init(
-    out: Path = typer.Option(Path("demogen.yaml"), help="Config locale da creare (gitignored)"),
+    out: Path = typer.Option(Path("demogen.yaml"), help="Local config to create (gitignored)"),
 ) -> None:
-    """Crea demogen.yaml dal template del pacchetto (demogen/demo.yaml); demogen.yaml e' gitignored."""
+    """Create demogen.yaml from the package template (demogen/demo.yaml); demogen.yaml is gitignored."""
     from .config import DEMO_TEMPLATE, warn_if_not_ignored
 
     if out.exists():
-        print(f"{out} esiste già — non sovrascritto.")
+        print(f"{out} already exists — not overwritten.")
         raise typer.Exit(0)
     shutil.copy(DEMO_TEMPLATE, out)
     warn_if_not_ignored(out)
-    print("Prossimi passi: inserisci la chiave OpenRouter in providers.openrouter.api_key,")
-    print("imposta i modelli in roles/*/model. Poi: demogen models check")
+    print("Next steps: put the OpenRouter key in providers.openrouter.api_key,")
+    print("set the models in roles/*/model. Then: demogen models check")
 
 
 @models_app.command("check")
 def models_check(
-    config: Path | None = typer.Option(None, help="Path della config (default: ./demogen.yaml)"),
-    role: str | None = typer.Option(None, help="Testa un solo ruolo"),
+    config: Path | None = typer.Option(None, help="Config path (default: ./demogen.yaml)"),
+    role: str | None = typer.Option(None, help="Test a single role"),
 ) -> None:
-    """Per ogni ruolo: chiamata minima di testo (+ immagine se vision, + schema se json_schema)."""
+    """For each role: a minimal text call (+ image if vision, + schema if json_schema)."""
     import base64
     import io
 
@@ -231,27 +242,29 @@ def models_check(
     budget = Budget.from_config(cfg)
     roles = [role] if role else list(cfg.roles)
     header = (
-        f"{'ruolo':<14} {'modello':<28} {'testo':<6} {'vision':<7} "
-        f"{'json':<6} {'latenza':<8} {'costo USD'}"
+        f"{'role':<14} {'model':<28} {'text':<6} {'vision':<7} "
+        f"{'json':<6} {'latency':<8} {'cost USD'}"
     )
     print(header)
     for r in roles:
         try:
             client = LLMClient(cfg, r, max_retries=1, budget=budget)
         except ValueError as e:
-            print(f"{r:<14} {'-':<28} ERRORE config: {e}")
+            print(f"{r:<14} {'-':<28} CONFIG ERROR: {e}")
             continue
         caps = detect_capabilities(cfg, r, cache_dir=Path(cfg.cache_dir))
+        errors: list[tuple[str, BaseException]] = []
         # 1) testo
         try:
             resp = client.chat(
-                [{"role": "user", "content": "Rispondi esattamente: OK"}], step="models-check"
+                [{"role": "user", "content": "Reply exactly: OK"}], step="models-check"
             )
             ok_text = "OK" in resp.content
             lat = f"{resp.latency_s:.2f}s"
             cost = f"{resp.cost_usd:.6f}" if resp.cost_usd is not None else "-"
         except Exception as e:  # noqa: BLE001
-            print(f"{r:<14} {client.model:<28} ERRORE testo: {e}")
+            print(f"{r:<14} {client.model:<28} ERROR")
+            print(_llm_error_text(e, indent="    "))
             continue
         # 2) vision: immagine 64x64 rossa
         ok_vision = "-"
@@ -270,7 +283,7 @@ def models_check(
                             "content": [
                                 {
                                     "type": "text",
-                                    "text": "Di che colore è? Rispondi JSON {\"colore\": \"...\"}.",
+                                    "text": "What color is it? Reply JSON {\"color\": \"...\"}.",
                                 },
                                 {
                                     "type": "image_url",
@@ -284,13 +297,14 @@ def models_check(
                 low = vresp.content.lower()
                 ok_vision = "ok" if ("ross" in low or "red" in low) else f"? ({low[:30]!r})"
             except Exception as e:  # noqa: BLE001
-                ok_vision = f"err: {str(e)[:40]}"
+                ok_vision = "ERROR"
+                errors.append(("vision", e))
         # 3) json_schema
         ok_json = "-"
         if caps.json_schema:
             try:
                 client.chat(
-                    [{"role": "user", "content": "Restituisci JSON {\"ok\": true}"}],
+                    [{"role": "user", "content": "Return JSON {\"ok\": true}"}],
                     response_format={
                         "type": "json_schema",
                         "json_schema": {
@@ -308,12 +322,25 @@ def models_check(
                 )
                 ok_json = "ok"
             except Exception as e:  # noqa: BLE001
-                ok_json = f"err: {str(e)[:40]}"
+                ok_json = "ERROR"
+                errors.append(("json_schema", e))
         row = (
             f"{r:<14} {client.model:<28} {'ok' if ok_text else 'NO':<6} "
             f"{ok_vision:<7} {ok_json:<6} {lat:<8} {cost}"
         )
         print(row)
+        for what, e in errors:
+            print(f"    [{what}]")
+            print(_llm_error_text(e, indent="    "))
+
+
+def _llm_error_text(e: BaseException, indent: str = "") -> str:
+    """Errore del provider spiegato (titolo, messaggio vero, cosa fare); gli altri come testo."""
+    from .llm.errors import describe_llm_error
+
+    info = describe_llm_error(e)
+    text = info.text() if info is not None else f"ERROR: {type(e).__name__}: {e}"
+    return "\n".join(indent + line for line in text.splitlines())
 
 
 def _try_config() -> object | None:
@@ -330,12 +357,12 @@ def _try_config() -> object | None:
 def inspect(
     file: Path = typer.Argument(..., exists=True, readable=True, help=".glsl | timeline.json | .demo"),
     gpu: str = typer.Option("swiftshader", help="hardware | swiftshader"),
-    frames: int = typer.Option(16, help="Numero di keyframe catturati"),
+    frames: int = typer.Option(16, help="Number of captured keyframes"),
     width: int = typer.Option(480),
     height: int = typer.Option(270),
-    out: Path = typer.Option(Path("out"), help="Cartella report"),
+    out: Path = typer.Option(Path("out"), help="Report folder"),
 ) -> None:
-    """Carica la demo nell'harness, calcola metriche + gate, salva fogli e report in out/."""
+    """Load the demo in the harness, compute metrics + gates, save sheets and the report in out/."""
     import io
     import json as _json
 
@@ -363,7 +390,7 @@ def inspect(
     with Harness(gpu=gpu, headless=True, channel=channel) as h:  # type: ignore[arg-type]
         res = h.load(payload)
         if not res["ok"]:
-            print("ERRORI di compilazione:")
+            print("Compile errors:")
             for e in res["errors"]:
                 print(e[:2000])
             raise typer.Exit(1)
@@ -477,9 +504,9 @@ def calibrate(
     gpu: str = typer.Option("hardware", help="hardware | swiftshader"),
     width: int = typer.Option(1920),
     height: int = typer.Option(1080),
-    out: Path = typer.Option(Path("out"), help="Dove salvare calibrate.json"),
+    out: Path = typer.Option(Path("out"), help="Where to save calibrate.json"),
 ) -> None:
-    """Misura i 4 shader di examples/ a risoluzione di riferimento e salva out/calibrate.json."""
+    """Measure the example shaders at the reference resolution and save out/calibrate.json."""
     import json as _json
 
     from .browser.harness import Harness
@@ -507,32 +534,40 @@ def calibrate(
             print(f"{sh.stem:<18} renderer={info['renderer'][:40]}  samples={prof['samples']}")
     out.mkdir(parents=True, exist_ok=True)
     (out / "calibrate.json").write_text(_json.dumps(results, indent=1), encoding="utf-8")
-    print(f"salvato {out}/calibrate.json")
+    print(f"saved {out}/calibrate.json")
 
 
 @app.command()
 def generate(
-    prompt: str = typer.Argument(..., help="Prompt testuale della demo"),
-    duration: float = typer.Option(30.0, help="Durata in secondi"),
+    prompt: str = typer.Argument(..., help="Text prompt of the demo"),
+    duration: float = typer.Option(30.0, help="Duration in seconds"),
     bpm: float = typer.Option(128.0),
     profile: str = typer.Option("modern", help="modern | retro"),
-    loop: bool = typer.Option(False),
-    project: Path | None = typer.Option(None, help="Cartella progetto (default: projects/<data>_<slug>)"),
-    fake: bool = typer.Option(False, help="LLM finto deterministico (smoke senza API reali)"),
+    loop: bool | None = typer.Option(None, "--loop/--no-loop",
+                                     help="Loop forever at the end (default: as the prompt asks)"),
+    project: Path | None = typer.Option(None, help="Project folder (default: projects/<date>_<slug>)"),
+    fake: bool = typer.Option(False, help="Deterministic fake LLM (smoke test, no real API)"),
     gpu: str = typer.Option("swiftshader", help="hardware | swiftshader"),
+    plain: bool = typer.Option(False, "--plain", help="Plain text log, no live panel"),
+    max_cost: float | None = typer.Option(None, "--max-cost", help=MAX_COST_HELP),
+    music: str = typer.Option("", "--music", help="Prompt for the music (genre, instruments, mood); "
+                              "empty = from the demo prompt"),
+    no_music: bool = typer.Option(False, "--no-music", help="Demo without a soundtrack"),
 ) -> None:
-    """Pipeline completa: prompt → spec → style → shader per scena → compile → probe → critica → bundle."""
+    """Full pipeline: prompt -> spec -> style -> shaders and music -> compile -> probe -> critique -> bundle."""
     from .project.store import Project, new_project_dir
 
     proj = Project(project or new_project_dir(prompt))
-    pipe = _pipeline(proj, gpu, fake)
-    spec = _guard(lambda: pipe.run(prompt, duration_s=duration, bpm=bpm, profile=profile, loop=loop))
-    print(f"progetto: {proj.path}")
-    print(f"spec: {spec.title} — {len(spec.scenes)} scene, {spec.duration_s:.1f}s, bpm {spec.timeline.bpm}")
+    pipe = _pipeline(proj, gpu, fake, max_cost)
+    spec = _execute(lambda: pipe.run(prompt, duration_s=duration, bpm=bpm, profile=profile, loop=loop,
+                                     audio=not no_music, music=music),
+                    "generate", plain, proj.path)
+    print(f"project: {proj.path}")
+    print(f"spec: {spec.title} — {len(spec.scenes)} scenes, {spec.duration_s:.1f}s, bpm {spec.timeline.bpm}")
     print(f"report: {proj.path / 'report.md'}")
 
 
-def _pipeline(proj, gpu: str, fake: bool):
+def _pipeline(proj, gpu: str, fake: bool, max_cost: float | None = None):
     from .config import Config, load_config
     from .llm.fake import fake_client_factory
     from .orchestrator.pipeline import Pipeline
@@ -540,54 +575,209 @@ def _pipeline(proj, gpu: str, fake: bool):
     if fake:
         return Pipeline(proj, Config.model_validate({"providers": {}, "roles": {}}), gpu=gpu,
                         client_factory=fake_client_factory)
-    return Pipeline(proj, load_config(None), gpu=gpu)
+    cfg = load_config(None)
+    if max_cost is not None:
+        if max_cost <= 0:
+            raise typer.BadParameter("--max-cost must be > 0")
+        cfg.budget.max_total_cost_usd = max_cost
+    return Pipeline(proj, cfg, gpu=gpu)
 
 
-def _guard(fn):
-    """Errori attesi della pipeline → messaggio leggibile ed exit code 1 (niente traceback)."""
+def _guard(fn, project: Path | None = None):
+    """Errori attesi della pipeline e del provider LLM → messaggio chiaro ed exit code 1, niente
+    traceback. Lo stato è già salvato: `demogen resume` riparte senza rifare le chiamate fatte."""
+    from . import progress
+    from .llm.errors import describe_llm_error
     from .orchestrator.steps import PipelineError
 
+    then = (f"continue with `demogen resume {project}` (menu: Resume): calls already made are not repeated"
+            if project is not None else "")
     try:
         return fn()
     except PipelineError as e:
-        print(f"ERRORE: {e}", file=sys.stderr)
+        progress.emit("error", title="the pipeline stopped", detail=str(e)[:600], hint="", where="")
+        print(f"ERROR: {e}", file=sys.stderr)
         raise typer.Exit(1) from e
+    except Exception as e:
+        info = describe_llm_error(e)
+        if info is None:
+            raise  # non è un errore del provider: traceback normale
+        progress.emit("error", title=info.title, detail=info.detail, hint=info.hint, where=info.where)
+        print(info.text(then), file=sys.stderr)
+        raise typer.Exit(1) from e
+
+
+def _execute(fn, mode: str, plain: bool, project: Path | None = None):
+    """Esegue la pipeline: in un terminale con il pannello dal vivo, altrimenti (output rediretto,
+    --plain o DEMOGEN_PLAIN=1) con il solo log testuale."""
+    import os
+
+    if plain or os.environ.get("DEMOGEN_PLAIN") or not sys.stdout.isatty():
+        return _guard(fn, project)
+    from .dashboard import Dashboard
+
+    with Dashboard(mode):
+        return _guard(fn, project)
 
 
 @app.command()
 def resume(
-    project: Path = typer.Argument(..., exists=True, help="Cartella del progetto"),
+    project: Path = typer.Argument(..., exists=True, help="Project folder"),
     gpu: str = typer.Option("swiftshader"),
-    fake: bool = typer.Option(False, help="LLM finto deterministico (smoke senza API reali)"),
+    fake: bool = typer.Option(False, help="Deterministic fake LLM (smoke test, no real API)"),
+    plain: bool = typer.Option(False, "--plain", help="Plain text log, no live panel"),
+    max_cost: float | None = typer.Option(None, "--max-cost", help=MAX_COST_HELP),
 ) -> None:
-    """Riprende un progetto da state.json senza rifare step (e chiamate LLM) già completati."""
+    """Resume a project from state.json without redoing completed steps (or LLM calls)."""
     from .project.store import Project
 
-    pipe = _pipeline(Project(project), gpu, fake)
-    _guard(pipe.resume)
+    pipe = _pipeline(Project(project), gpu, fake, max_cost)
+    _execute(pipe.resume, "resume", plain, project)
 
 
 @app.command()
 def revise(
     project: Path = typer.Argument(..., exists=True),
-    scene: str = typer.Option(..., help="id scena (s1, s2, ...)"),
-    note: str = typer.Option(..., help="Nota di revisione (es. 'meno nebbia, più contrasto sul kick')"),
+    scene: str = typer.Option(..., help="scene id (s1, s2, ...)"),
+    note: str = typer.Option(..., help="Revision note (e.g. 'less fog, more contrast on the kick')"),
     gpu: str = typer.Option("swiftshader"),
-    fake: bool = typer.Option(False, help="LLM finto deterministico (smoke senza API reali)"),
+    fake: bool = typer.Option(False, help="Deterministic fake LLM (smoke test, no real API)"),
+    plain: bool = typer.Option(False, "--plain", help="Plain text log, no live panel"),
+    max_cost: float | None = typer.Option(None, "--max-cost", help=MAX_COST_HELP),
 ) -> None:
-    """Revisione mirata di una scena con nota testuale (nuova versione max+1), poi nuovo bundle."""
+    """Targeted revision of a scene from a text note (new version max+1), then a new bundle."""
     from .project.store import Project
 
-    pipe = _pipeline(Project(project), gpu, fake)
-    _guard(lambda: pipe.run_revise(scene, note))
+    pipe = _pipeline(Project(project), gpu, fake, max_cost)
+    _execute(lambda: pipe.run_revise(scene, note), "revise", plain, project)
+
+
+@app.command()
+def music(
+    project: Path = typer.Argument(..., exists=True, help="Project folder"),
+    prompt: str = typer.Option("", "--prompt", help="What you want to hear (genre, instruments, mood); "
+                               "empty = from the demo prompt"),
+    gpu: str = typer.Option("swiftshader"),
+    fake: bool = typer.Option(False, help="Deterministic fake LLM (smoke test, no real API)"),
+    plain: bool = typer.Option(False, "--plain", help="Plain text log, no live panel"),
+    max_cost: float | None = typer.Option(None, "--max-cost", help=MAX_COST_HELP),
+) -> None:
+    """(Re)compose the soundtrack of a project from a prompt, listen to it and rebuild the bundle."""
+    from .project.store import Project
+
+    pipe = _pipeline(Project(project), gpu, fake, max_cost)
+    if _execute(lambda: pipe.run_music(prompt), "musica", plain, project):
+        out = sorted((Path(project) / "out").glob("*.html"))
+        print(f"music ready in the bundle: {out[-1] if out else Path(project) / 'out'}")
+
+
+def budget_summary(cfg) -> dict:
+    """Tetti di consumo LLM e spesa (oggi, mese, per progetto nel mese) dal registro locale."""
+    from datetime import datetime
+
+    from .llm.budget import ledger_path, read_ledger, spend_totals
+
+    rows = read_ledger(ledger_path(cfg))
+    today, month = spend_totals(rows)
+    ym = datetime.now().strftime("%Y-%m")
+    per_project: dict[str, float] = {}
+    for r in rows:
+        if str(r.get("ts", "")).startswith(ym):
+            key = str(r.get("project") or "-")
+            per_project[key] = per_project.get(key, 0.0) + float(r["cost"])
+    b = cfg.budget
+    return {
+        "caps": {"run": b.max_total_cost_usd, "daily": b.max_daily_cost_usd, "monthly": b.max_monthly_cost_usd,
+                 "calls": b.max_calls_per_run, "minutes": b.max_wall_minutes},
+        "today": round(today, 6),
+        "month": round(month, 6),
+        "projects": dict(sorted(per_project.items(), key=lambda kv: -kv[1])),
+    }
+
+
+@app.command()
+def budget(
+    run: float | None = typer.Option(None, "--run", help="Cap per run in USD"),
+    daily: float | None = typer.Option(None, "--daily", help="Daily cap in USD across all runs (0 = no cap)"),
+    monthly: float | None = typer.Option(None, "--monthly", help="Monthly cap in USD across all runs (0 = no cap)"),
+    calls: int | None = typer.Option(None, "--calls", help="Max LLM calls per run (0 = no cap)"),
+    minutes: float | None = typer.Option(None, "--minutes", help="Max minutes per run"),
+    config: Path = typer.Option(Path("demogen.yaml"), help="Config file"),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> None:
+    """Show LLM spending (today, this month, per project) and the spending caps; set caps with the options."""
+    import json as _json
+
+    from .config import set_budget_values
+
+    if not config.exists():
+        print(f"ERROR: {config} not found: create it with `demogen init`", file=sys.stderr)
+        raise typer.Exit(1)
+    changes: dict[str, object] = {}
+    if run is not None:
+        if run <= 0:
+            raise typer.BadParameter("--run must be > 0")
+        changes["max_total_cost_usd"] = float(run)
+    for key, val in (("max_daily_cost_usd", daily), ("max_monthly_cost_usd", monthly)):
+        if val is not None:
+            if val < 0:
+                raise typer.BadParameter("caps must be >= 0 (0 = no cap)")
+            changes[key] = float(val) if val > 0 else None
+    if calls is not None:
+        changes["max_calls_per_run"] = int(calls) if calls > 0 else None
+    if minutes is not None:
+        if minutes <= 0:
+            raise typer.BadParameter("--minutes must be > 0")
+        changes["max_wall_minutes"] = float(minutes)
+    if changes:
+        try:
+            set_budget_values(config, changes)
+        except Exception as e:  # noqa: BLE001 - il file resta com'era
+            print(f"ERROR: could not update {config}: {e}", file=sys.stderr)
+            raise typer.Exit(1) from e
+    from .config import load_config
+
+    s = budget_summary(load_config(config, interactive=False))
+    if as_json:
+        print(_json.dumps(s))
+        return
+    if changes:
+        print(f"updated {config}: " + ", ".join(f"{k}={'none' if v is None else v}" for k, v in changes.items()))
+
+    def cap(v, unit=" USD") -> str:
+        return "no cap" if v is None else f"{v:g}{unit}"
+
+    c = s["caps"]
+    print("LLM spending caps")
+    print(f"  per run      {cap(c['run'])}")
+    print(f"  per day      {cap(c['daily']):<14}  spent today       {s['today']:.4f} USD")
+    print(f"  per month    {cap(c['monthly']):<14}  spent this month  {s['month']:.4f} USD")
+    print(f"  calls/run    {cap(c['calls'], '')}")
+    print(f"  minutes/run  {cap(c['minutes'], '')}")
+    if s["projects"]:
+        print("This month by project:")
+        for name, usd in list(s["projects"].items())[:10]:
+            print(f"  {name:<44} {usd:.4f} USD")
+    print("(the spending log starts with the first call made after this feature was added)")
 
 
 @app.command()
 def report(project: Path = typer.Argument(..., exists=True)) -> None:
-    """Stampa il report.md del progetto."""
+    """Print the report.md of the project."""
     from .project.report import build_report
 
     print(build_report(project))
+
+
+@app.command()
+def menu(
+    action: str = typer.Option("", "--action", help="Run one menu entry by name or number, no menu ('list' = all)"),
+    yes: bool = typer.Option(False, "--yes", help="With --action: answer yes to confirmations"),
+) -> None:
+    """Interactive control deck: the whole app in one menu (`npm run menu` or run.cmd starts it)."""
+    from .menu import main as menu_main
+
+    raise typer.Exit(menu_main(action, yes))
 
 
 if __name__ == "__main__":

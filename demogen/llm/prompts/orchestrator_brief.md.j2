@@ -2,10 +2,14 @@
 
 User prompt: {{ prompt }}
 
-CLI flags (authoritative, override your choices): duration_s={{ duration_s }}, bpm={{ bpm }}, profile={{ profile }}, loop={{ loop }}.
+CLI flags (authoritative, override your choices): duration_s={{ duration_s }}, bpm={{ bpm }}, profile={{ profile }}{% if loop is not none %}, loop={{ loop }}{% endif %}.
+{% if loop is none %}
+loop: your choice — true if the prompt asks for a loop (seamless, looping, endless, first and last frame identical), else false.
+{% endif %}
 
 Produce a DemoSpec JSON with:
-- 2..6 scenes with a progression (intro, development, climax, outro), each with id s1, s2, ...
+- 1..6 scenes, each with id s1, s2, ... Each scene is written separately, so every split costs continuity: split only where the picture really changes (place, subject, technique, shot). A continuous action of one subject in one fixed shot, or a short demo the prompt describes as one sequence or a seamless loop, is ONE scene that plays its phases over time. Longer demos: a progression (intro, development, climax, outro).
+- A subject shown in several scenes (character, sprite, logo, object) must be described identically in each of them: same shape, size on screen, colors and position conventions.
 - timeline: bpm, beats_per_bar=4, scenes contiguous: each {id, start_bar, bars, transition_in: cut|crossfade|flash|fade_black, transition_bars}
 - duration_s MUST equal total_bars * beats_per_bar * 60 / bpm (max 120 s)
 - profile: "modern" (raymarch/SDF/fbm) or "retro" (320x180, palette, dithering, chiptune) — choose "retro" if the prompt suggests old-school/Amiga/C64 style, else "modern"

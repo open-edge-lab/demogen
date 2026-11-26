@@ -13,7 +13,7 @@ def base_url_for(p: ProviderConfig) -> str:
     if p.type == "openrouter":
         return p.base_url or OPENROUTER_BASE_URL
     if not p.base_url:
-        raise ValueError("provider openai_compatible richiede base_url")
+        raise ValueError("provider openai_compatible requires base_url")
     return p.base_url.rstrip("/")
 
 

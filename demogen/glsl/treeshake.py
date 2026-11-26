@@ -39,7 +39,7 @@ def load_library(lib_dir: Path) -> dict[str, str]:
         for i, m in enumerate(markers):
             name = m.group(1)
             if name in funcs:  # una seconda definizione sovrascriverebbe la prima in silenzio
-                raise ValueError(f"@fn {name} duplicata nella libreria: {where[name].name} e {path.name}")
+                raise ValueError(f"@fn {name} duplicated in the library: {where[name].name} and {path.name}")
             start = m.start()
             end = markers[i + 1].start() if i + 1 < len(markers) else len(text)
             funcs[name] = text[start:end].strip() + "\n"
@@ -110,6 +110,6 @@ def shared_common_conflicts(scenes: dict[str, str], style: str, lib_funcs: dict[
         needed = _called_names(src + "\n" + closure, others)
         for name in sorted(needed):
             owners = sorted(j for j, d in defs.items() if name in d)
-            out.append(f"la scena {k} usa {name}() della libreria, ma {', '.join(owners)} la ridefinisce "
-                       "e il common è condiviso: rinomina la funzione della scena")
+            out.append(f"scene {k} uses the library function {name}(), but {', '.join(owners)} redefines it "
+                       "and the common code is shared: rename the scene's function")
     return out

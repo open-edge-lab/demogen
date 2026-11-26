@@ -9,11 +9,23 @@ export class PlaybackClock {
   constructor(
     private now: () => number,
     readonly durationS: number,
-    readonly loop: boolean,
+    private loopOn: boolean,
   ) {}
 
   get isPlaying(): boolean {
     return this.playing;
+  }
+
+  get loop(): boolean {
+    return this.loopOn;
+  }
+
+  /** Attiva/disattiva il loop conservando la posizione visibile (senza audio master: il player
+   *  ferma l'audio prima di chiamarlo). */
+  setLoop(on: boolean): void {
+    const t = this.time();
+    this.loopOn = on;
+    this.seek(t);
   }
 
   play(): void {
@@ -30,7 +42,7 @@ export class PlaybackClock {
   }
 
   seek(t: number): void {
-    this.offsetS = this.loop ? Math.max(0, t) : Math.max(0, Math.min(this.durationS, t));
+    this.offsetS = this.loopOn ? Math.max(0, t) : Math.max(0, Math.min(this.durationS, t));
     this.startMs = this.now() - this.offsetS * 1000;
   }
 
@@ -48,12 +60,12 @@ export class PlaybackClock {
 
   wrap(t: number): number {
     const d = this.durationS;
-    if (this.loop && d > 0) return ((t % d) + d) % d;
+    if (this.loopOn && d > 0) return ((t % d) + d) % d;
     return Math.max(0, Math.min(d, t));
   }
 
   /** true se la demo (senza loop) è arrivata alla fine. */
   ended(audioTime?: number | null): boolean {
-    return !this.loop && this.raw(audioTime) >= this.durationS;
+    return !this.loopOn && this.raw(audioTime) >= this.durationS;
   }
 }

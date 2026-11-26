@@ -10,6 +10,8 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from .. import progress
+
 
 @dataclass
 class FakeResponse:
@@ -58,6 +60,20 @@ FAKE_SCENE = """void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 }
 """
 
+# colonna sonora del fake: chiptune sul beat (kick, hat in levare, basso), come l'esempio audio_chip
+FAKE_MUSIC = """void mainAudio(out vec4 o, in float t) {
+    float beatDur = 60.0 / BPM;
+    float beat = floor(t / beatDur);
+    float ph = fract(t / beatDur);
+    float s = chipKick(ph * beatDur);
+    float off = fract(ph * 2.0);
+    s += chipHat(off * beatDur * 0.5) * step(0.5, off);
+    s += chipBass(t, mod(beat, 8.0) < 4.0 ? 0.0 : 7.0) * 0.7;
+    s = tanh(s * 0.9);
+    o = vec4(s, s * 0.95, 0.0, 1.0);
+}
+"""
+
 # math_requests del fake: uno verificato (easing), uno volutamente falso (sdf senza regione negativa)
 FAKE_MATH_REQUESTS = [
     {
@@ -72,7 +88,7 @@ FAKE_MATH_REQUESTS = [
     {
         "id": "sdf_falso",
         "kind": "sdf",
-        "description": "claim falso: len2 non ha regione negativa",
+        "description": "false claim: len2 has no negative region",
         "inputs": {"x": "float", "y": "float"},
         "output_signature": "float sdf_falso(float x, float y)",
         "expr": "len2(x, y)",
@@ -153,6 +169,11 @@ class FakeLLM:
                 '"math_requests": ' + json.dumps(FAKE_MATH_REQUESTS) + "}"
                 "\n```\n\n```glsl\n" + FAKE_SCENE + "```\n"
             )
+        if step.startswith("music"):
+            return FakeResponse(
+                content='```json\n{"notes": "fake chiptune: kick, offbeat hat, bass", "key": "A minor"}\n```\n\n'
+                "```glsl\n" + FAKE_MUSIC + "```\n"
+            )
         if step.startswith("fixer"):
             return FakeResponse(content="```glsl\n" + FAKE_SCENE + "```\n")
         if step.startswith("revise"):
@@ -183,7 +204,10 @@ class FakeLLM:
             c = m.get("content")
             if isinstance(c, str) and "User prompt:" in c:
                 hint = c.split("User prompt:", 1)[1].splitlines()[0].strip()
-        return self._respond(step, hint)
+        with progress.llm_call(self.role, "fake", step) as call:
+            r = self._respond(step, hint)
+            call.update(cost=0.0, latency=0.0)
+            return r
 
     async def achat(self, messages, *, step: str = "", **kwargs: Any) -> FakeResponse:
         return self.chat(messages, step=step, **kwargs)

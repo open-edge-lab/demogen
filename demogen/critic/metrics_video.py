@@ -66,7 +66,7 @@ def video_metrics(
       loop, e loop_seam_ratio, la stessa diviso la diff tipica tra frame consecutivi.
     """
     if not frames:
-        raise ValueError("nessun frame")
+        raise ValueError("no frames")
     stack = np.stack([_luma(f) for f in frames])  # (N,H,W) in [0,1]
     luma_mean = float(stack.mean())
     luma_std = float(stack.std())

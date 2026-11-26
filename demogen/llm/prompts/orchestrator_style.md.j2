@@ -5,6 +5,10 @@ Art direction: {{ art_direction }}
 Palette hint: {{ palette_hint }}
 Profile: {{ profile }}
 BPM: {{ bpm }}
+Scenes:
+{% for s in scenes %}
+- {{ s.id }} "{{ s.title }}" ({{ s.profile or profile }} profile): {{ s.description }}
+{% endfor %}
 
 Write:
 
@@ -12,6 +16,9 @@ Write:
    - For modern: `vec3 finalize(vec3 col, vec2 uv)` ending in `toSRGB(...)` after tonemap/vignette/grain (library `post.glsl`).
    - For retro: `const vec3 PALETTE[16] = vec3[16](...); const int PALETTE_N = 16;` and `finalize()` that calls `retroFinalize(col, uv, gl_FragCoord.xy, PALETTE, PALETTE_N)` under `#ifdef PROFILE_RETRO` (and a modern branch otherwise, for mixed demos).
    - Optionally small shared constants/helpers used by scenes.
+   - If several scenes show the same subject (a character, a sprite, a logo, an object), define ONE function here that draws it (e.g. `vec4 drawSubject(vec2 p, float pose)` returning color and alpha, with its exact palette), so every scene draws the same one.
+   - Right above every shared function write a `//` comment that documents each parameter (meaning, units, range, which vec component holds what) and what it returns: the scenes see only the signature and that comment, so prefer separate named parameters to packed vec4s.
+   - Color space: a modern scene works in linear RGB and finalize() converts to sRGB once; a retro scene works in display colors (palette hex / 255) that retroFinalize quantizes as they are. A shared function returns colors in the space of the scenes that call it: for retro scenes the palette values as they are, never `srgb2lin`/`pow(c, 2.2)` (they would snap to the wrong, darker palette entries).
    - Use ONLY library functions (see contract prefix). No new hash, no textures.
 
 2. `post.json` — in a ```json block: e.g. `{"bloom": {"threshold": 0.8, "intensity": 0.5}}` or `{}` if no bloom.

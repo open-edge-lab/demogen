@@ -30,7 +30,7 @@ export function createGL(canvas: HTMLCanvasElement, preserveDrawingBuffer = fals
     powerPreference: "high-performance",
     preserveDrawingBuffer,
   });
-  if (!gl) throw new Error("WebGL2 non disponibile");
+  if (!gl) throw new Error("WebGL2 not available");
   return gl;
 }
 
@@ -58,13 +58,13 @@ export function compileShader(
   src: string,
 ): WebGLShader {
   const sh = gl.createShader(type);
-  if (!sh) throw new Error("createShader fallita");
+  if (!sh) throw new Error("createShader failed");
   gl.shaderSource(sh, src);
   gl.compileShader(sh);
   if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
     const log = gl.getShaderInfoLog(sh);
     gl.deleteShader(sh);
-    throw new Error(`Errore compilazione shader:\n${log}\n--- sorgente ---\n${src}`);
+    throw new Error(`Shader compile error:\n${log}\n--- sorgente ---\n${src}`);
   }
   return sh;
 }
@@ -79,7 +79,7 @@ export function createProgram(gl: WebGL2RenderingContext, fragSrc: string): WebG
     throw e;
   }
   const prog = gl.createProgram();
-  if (!prog) throw new Error("createProgram fallita");
+  if (!prog) throw new Error("createProgram failed");
   gl.attachShader(prog, vs);
   gl.attachShader(prog, fs);
   gl.linkProgram(prog);
@@ -89,7 +89,7 @@ export function createProgram(gl: WebGL2RenderingContext, fragSrc: string): WebG
   gl.deleteShader(fs);
   if (!ok) {
     gl.deleteProgram(prog);
-    throw new Error(`Errore di link:\n${log}`);
+    throw new Error(`Link error:\n${log}`);
   }
   return prog;
 }
@@ -128,7 +128,7 @@ export function createFBO(gl: WebGL2RenderingContext, w: number, h: number): FBO
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
   if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
-    throw new Error("FBO incompleto");
+    throw new Error("incomplete FBO");
   }
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   return { fbo, tex, width: w, height: h };

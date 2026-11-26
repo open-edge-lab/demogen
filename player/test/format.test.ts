@@ -22,17 +22,17 @@ describe("parsePayload", () => {
   });
 
   it("rifiuta formati sconosciuti", () => {
-    expect(() => parsePayload({ ...basePayload, format: "demogen/2" })).toThrow(/Formato/);
+    expect(() => parsePayload({ ...basePayload, format: "demogen/2" })).toThrow(/Unsupported format/);
   });
 
   it("rifiuta scena senza sorgente", () => {
     expect(() =>
       parsePayload({ ...basePayload, scenes: {} }),
-    ).toThrow(/senza sorgente/);
+    ).toThrow(/has no source/);
   });
 
   it("rifiuta payload oltre il limite", () => {
-    expect(() => parsePayload(basePayload, MAX_PAYLOAD_BYTES + 1)).toThrow(/troppo grande/);
+    expect(() => parsePayload(basePayload, MAX_PAYLOAD_BYTES + 1)).toThrow(/too large/);
   });
 });
 

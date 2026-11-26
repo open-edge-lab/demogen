@@ -3,6 +3,8 @@ name = "demogen"
 version = "0.1.0"
 description = "Generatore offline di demo realtime stile demoscene da prompt testuale (Fase 0: motore WebGL2 dual-mode GPU/CPU)"
 readme = "README.md"
+license = "MIT"
+authors = [{ name = "Andrea Nucciarelli (Open Edge Consulting)" }]
 requires-python = ">=3.11"
 dependencies = [
     "typer>=0.12",

@@ -22,12 +22,14 @@ import numpy as np
 from PIL import Image
 from pydantic import ValidationError
 
+from .. import progress
 from ..browser.harness import Harness
 from ..browser.perf_lane import perf_lane
 from ..critic.flash import analyze_flash
 from ..critic.gates import is_software_renderer, run_gates
 from ..critic.metrics_perf import perf_profile
 from ..critic.metrics_video import video_metrics
+from ..critic.perf_ref import add_ratios, measure_reference
 from ..critic.sheets import burst_sheet, contact_sheet, diff_heatmap
 from ..glsl.treeshake import load_library, treeshake
 from ..llm.budget import BudgetExceeded
@@ -48,10 +50,17 @@ SRC_SCENE = 2
 MAX_FIXER_ERRORS = 30
 
 _ERR_LINE = re.compile(r"ERROR:\s*(\d+):(\d+):\s*(.*)")
+# il player accoda il sorgente completo all'errore dopo questo marcatore (vecchio testo italiano o inglese)
+_SRC_MARK = re.compile(r"--- (?:sorgente|source) ---")
 
 
 class PipelineError(RuntimeError):
     """Errore della pipeline con messaggio per l'utente (exit code != 0)."""
+
+
+def error_log(e: object) -> str:
+    """Il log del compilatore di un errore del player, senza il sorgente completo accodato."""
+    return _SRC_MARK.split(str(e), 1)[0]
 
 
 # ---------------------------------------------------------------- sorgenti
@@ -125,13 +134,13 @@ def mono_payload(spec: DemoSpec, scene_id: str, scene_src: str, common: str) -> 
         "render": {"profile": profile, "overrides": {scene_id: profile}},
         "text": spec.text,
         "post": {},
-        "quality": {"min_scale": 0.5, "target_fps": 60},
+        "quality": {"min_scale": 0.25, "target_fps": 60},
     }
 
 
 @dataclass
 class CompileErrors:
-    scene: list[str] = field(default_factory=list)  # "riga N: messaggio" (righe della scena)
+    scene: list[str] = field(default_factory=list)  # "line N: messaggio" (righe della scena)
     style: list[str] = field(default_factory=list)  # righe di style.glsl
     other: list[str] = field(default_factory=list)  # header/lib/math/link
 
@@ -144,7 +153,7 @@ def parse_compile_errors(errors: list[str]) -> CompileErrors:
     """Smista gli errori ANGLE per sorgente (#line) e toglie il sorgente completo dal messaggio."""
     out = CompileErrors()
     for e in errors:
-        log = str(e).split("--- sorgente ---", 1)[0]
+        log = error_log(e)
         matched = False
         for line in log.splitlines():
             m = _ERR_LINE.search(line)
@@ -152,13 +161,13 @@ def parse_compile_errors(errors: list[str]) -> CompileErrors:
                 continue
             matched = True
             src_no, ln, msg = int(m.group(1)), int(m.group(2)), m.group(3).strip()
-            item = f"riga {ln}: {msg}"
+            item = f"line {ln}: {msg}"
             if src_no == SRC_SCENE:
                 out.scene.append(item)
             elif src_no == SRC_STYLE:
                 out.style.append(item)
             else:
-                out.other.append(f"(header/libreria/math) {item}")
+                out.other.append(f"(header/library/math) {item}")
         if not matched:
             out.other.append(log.strip()[:1000])
     return out
@@ -185,26 +194,30 @@ def truncate_timeline(spec: DemoSpec, max_s: float = MAX_DURATION_S) -> None:
         slot.transition_bars = min(slot.transition_bars, slot.bars)
         kept.append(slot)
     if not kept:
-        raise PipelineError(f"S0: timeline vuota dopo il troncamento a {max_s} s")
+        raise PipelineError(f"S0: empty timeline after truncating it to {max_s} s")
     tl.scenes = kept
     ids = {s.id for s in kept}
     spec.scenes = [s for s in spec.scenes if s.id in ids]
 
 
-def apply_request(spec: DemoSpec, prompt: str, bpm: float, profile: str, loop: bool) -> DemoSpec:
-    """I flag della CLI sono autoritativi: vincono sulle scelte dell'LLM."""
+def apply_request(spec: DemoSpec, prompt: str, bpm: float, profile: str, loop: bool | None) -> DemoSpec:
+    """I flag della CLI sono autoritativi: vincono sulle scelte dell'LLM.
+
+    `loop=None` (nessun --loop/--no-loop): decide lo spec, cioè il prompt ("seamless loop"). Con un
+    default False il loop chiesto nel prompt veniva sempre spento (run reale del gatto 8-bit)."""
     if profile not in ("modern", "retro"):
-        raise PipelineError(f"profilo non valido: {profile!r} (modern | retro)")
+        raise PipelineError(f"invalid profile: {profile!r} (modern | retro)")
     spec.prompt = prompt
     spec.timeline.bpm = float(bpm)
     spec.profile = profile  # type: ignore[assignment]
-    spec.loop = bool(loop)
+    if loop is not None:
+        spec.loop = bool(loop)
     truncate_timeline(spec)
     spec.duration_s = timeline_duration(spec)
     return DemoSpec.model_validate(spec.model_dump())  # rivalida (slot/scene coerenti)
 
 
-def s0_brief(ctx, prompt: str, duration_s: float, bpm: float, profile: str, loop: bool) -> DemoSpec:
+def s0_brief(ctx, prompt: str, duration_s: float, bpm: float, profile: str, loop: bool | None) -> DemoSpec:
     caps = ctx.caps("orchestrator")
     user = P.render(
         "orchestrator_brief.md.j2",
@@ -240,6 +253,7 @@ def s1_style(ctx, spec: DemoSpec) -> str:
                     palette_hint=", ".join(spec.palette_hint) or "-",
                     profile=spec.profile,
                     bpm=spec.timeline.bpm,
+                    scenes=spec.scenes,
                 ),
             },
         ],
@@ -250,14 +264,64 @@ def s1_style(ctx, spec: DemoSpec) -> str:
     try:
         style = env.glsl()
     except EnvelopeError as e:
-        raise PipelineError(f"S1: nessun blocco glsl nella risposta: {resp.content[:300]}") from e
+        raise PipelineError(f"S1: no glsl block in the response: {resp.content[:300]}") from e
     ctx.project.write("post.json", json.dumps(post))
     ctx.project.write("style.glsl", style)
     return style
 
 
 # ---------------------------------------------------------------- S2 draft
-def _scene_prompt(ctx, spec: DemoSpec, scene: SceneBrief) -> list[dict]:
+_FN_SIG = re.compile(r"^[ \t]*(void|float|int|bool|[iu]?vec[234]|mat[234])\s+(\w+)\s*\(([^)]*)\)", re.M)
+
+
+_DOC_MAX = 600  # caratteri di commento riportati per funzione
+_RULER = re.compile(r"[-=*#~_+.\s]*")
+
+
+def _comment_text(line: str) -> str:
+    """Testo di una riga `// ...`, vuoto se è solo un separatore (`// -----`)."""
+    text = line.strip()[2:].strip().lstrip("/").strip()
+    return "" if _RULER.fullmatch(text) else text
+
+
+def _doc_above(lines: list[str], i: int) -> str:
+    """Blocco di commenti `//` contiguo subito sopra la riga i."""
+    doc: list[str] = []
+    j = i - 1
+    while j >= 0 and lines[j].lstrip().startswith("//"):
+        if text := _comment_text(lines[j]):
+            doc.append(text)
+        j -= 1
+    return " ".join(reversed(doc))
+
+
+def style_api(style: str) -> str:
+    """Funzioni di style.glsl (escluso finalize) con il commento che le documenta, una per riga.
+
+    Le scene le chiamano invece di ridefinirle e vedono solo questo: senza il commento non sanno cosa
+    significano i parametri (nel run reale del gatto la scena passava la coda al posto del salto).
+    """
+    # i commenti a blocco diventano spazi, così gli indici di riga restano quelli del sorgente
+    code = re.sub(r"/\*.*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)), style, flags=re.S)
+    lines = code.splitlines()
+    out: dict[str, str] = {}
+    for m in _FN_SIG.finditer(code):
+        if m.group(2) == "finalize":
+            continue
+        params = " ".join(re.sub(r"//[^\n]*", "", m.group(3)).split())
+        sig = f"{m.group(1)} {m.group(2)}({params})"
+        row = code.count("\n", 0, m.start())
+        end_row = code.count("\n", 0, m.end())
+        trailing = re.search(r"//(.*)$", lines[end_row])
+        doc = " ".join(d for d in (_doc_above(lines, row), _comment_text("//" + trailing.group(1)) if trailing else "")
+                       if d)
+        if len(doc) > _DOC_MAX:
+            doc = doc[: _DOC_MAX - 3].rstrip() + "..."
+        out.setdefault(sig, doc)
+    return "\n".join(f"- `{sig}`" + (f": {doc}" if doc else "") for sig, doc in out.items())
+
+
+def _scene_prompt(ctx, spec: DemoSpec, scene: SceneBrief, style: str = "") -> list[dict]:
     profile = scene.profile or spec.profile
     tmpl = "orchestrator_scene_retro.md.j2" if profile == "retro" else "orchestrator_scene_modern.md.j2"
     prof = ctx.cfg.realtime.profiles.get(profile)
@@ -269,6 +333,8 @@ def _scene_prompt(ctx, spec: DemoSpec, scene: SceneBrief) -> list[dict]:
         res=prof["res"] if prof else [1920, 1080],
         budget_p95=prof["p95"] if prof else 6.0,
         budget_mean=prof["mean"] if prof else 4.0,
+        max_ref_ratio=ctx.cfg.realtime.max_ref_ratio_p95,
+        style_api=style_api(style),
     )
     return [
         {"role": "system", "content": P.system_prompt(spec.timeline.bpm)},
@@ -281,8 +347,8 @@ def _bad_envelope_feedback(content: str, err: Exception) -> list[dict]:
         {"role": "assistant", "content": content},
         {
             "role": "user",
-            "content": f"La risposta non è un envelope valido ({err}). Rispondi con un blocco ```json "
-            "(metadati ShaderSubmission) e un blocco ```glsl con il corpo completo di mainImage.",
+            "content": f"The response is not a valid envelope ({err}). Reply with one ```json block "
+            "(ShaderSubmission metadata) and one ```glsl block with the complete mainImage body.",
         },
     ]
 
@@ -296,10 +362,12 @@ async def s2_draft(ctx, spec: DemoSpec, style: str) -> dict[str, str]:
     """
 
     async def one(scene: SceneBrief) -> None:
-        msgs = _scene_prompt(ctx, spec, scene)
+        msgs = _scene_prompt(ctx, spec, scene, style)
         last_err: Exception | None = None
         for _attempt in range(2):
             content = ""
+            progress.emit("scene", scene=scene.id, phase="draft", version=1,
+                          detail="" if _attempt == 0 else "2nd attempt: invalid envelope")
             try:
                 resp = await achat_with_room(ctx.client("orchestrator"), msgs, step=f"draft:{scene.id}")
                 content = resp.content
@@ -313,12 +381,15 @@ async def s2_draft(ctx, spec: DemoSpec, style: str) -> dict[str, str]:
                 last_err = e
             msgs = msgs + _bad_envelope_feedback(content, last_err)
         else:
-            raise PipelineError(f"S2: draft della scena {scene.id} non valido dopo 2 tentativi: {last_err}")
+            raise PipelineError(f"S2: draft of scene {scene.id} still invalid after 2 attempts: {last_err}")
         ctx.project.write(f"scenes/{scene.id}/v1.meta.json", json.dumps(meta.model_dump(), indent=1))
         if meta.math_requests:
+            progress.emit("scene", scene=scene.id, phase="math", version=1,
+                          detail=f"{len(meta.math_requests)} requests")
             # verifica in subprocess: fuori dall'event loop, le altre scene continuano
             await asyncio.to_thread(run_oracle_for, ctx, scene.id, 1, meta.math_requests)
         ctx.project.write(f"scenes/{scene.id}/v1.glsl", src)
+        progress.emit("scene", scene=scene.id, phase="drafted", version=1)
 
     todo = [s for s in spec.scenes if not ctx.project.exists(f"scenes/{s.id}/v1.glsl")]
     sem = asyncio.Semaphore(ctx.cfg.budget.llm_concurrency)
@@ -355,11 +426,35 @@ def run_oracle_for(ctx, scene_id: str, version: int, requests) -> str:
     if oracle.math_glsl:
         ctx.project.write(f"scenes/{scene_id}/v{version}.math.glsl", oracle.math_glsl)
     for r in oracle.rejected:
-        print(f"[math] {scene_id}/{r.id} rifiutato: {r.reason}")
+        print(f"[math] {scene_id}/{r.id} rejected: {r.reason}")
+    progress.emit("math", scene=scene_id, version=version,
+                  accepted=len(oracle.results) - len(oracle.rejected), rejected=len(oracle.rejected))
     return oracle.math_glsl
 
 
 # ---------------------------------------------------------------- S4 compile + fixer
+_MAIN_OUT = re.compile(r"\bvoid\s+mainImage\s*\(\s*out\s+vec4\s+(\w+)")
+_COMMENTS = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+
+
+def output_lint(src: str) -> str | None:
+    """Errore "di compilazione" se mainImage non scrive mai il suo out vec4.
+
+    In GLSL è legale, ma lo schermo resta nero: nel run reale 3 revisioni di fila chiamavano
+    `finalize(col, uv);` buttando il risultato, e la critica vedeva solo "frame nero"."""
+    code = _COMMENTS.sub(lambda m: "\n" * m.group(0).count("\n"), src)
+    m = _MAIN_OUT.search(code)
+    if m is None:
+        return None  # firma diversa: ci pensa il compilatore
+    name = m.group(1)
+    if re.search(rf"\b{re.escape(name)}\b", code[m.end():]):
+        return None  # assegnato (o passato a una funzione che lo scrive)
+    line = code[: m.start()].count("\n") + 1
+    return (f"ERROR: {SRC_SCENE}:{line}: mainImage never assigns '{name}': the screen stays black. "
+            f"Write the final color, e.g. {name} = vec4(col, 1.0); "
+            f"(finalize() returns the color: {name} = vec4(finalize(col, uv), 1.0);)")
+
+
 def _run_fixer(ctx, spec: DemoSpec, scene_id: str, target: str, src: str, errors: str) -> str | None:
     fix_user = P.render("fixer.md.j2", src=src, errors=errors, target=target)
     resp = chat_with_room(
@@ -385,10 +480,14 @@ def s4_compile(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str,
     """
     cur = src
     errors: list[str] = []
-    for attempt in range(ctx.cfg.budget.max_fix_attempts + 1):
+    max_fix = ctx.cfg.budget.max_fix_attempts
+    for attempt in range(max_fix + 1):
+        progress.emit("scene", scene=scene_id, phase="compile", version=version,
+                      detail="" if attempt == 0 else f"after the fixer ({attempt}/{max_fix})")
         style = style_src(ctx)
         common, scene = compile_sources(ctx, scene_id, version, cur, style)
-        res = harness.load(mono_payload(spec, scene_id, scene, common))
+        lint = output_lint(cur)
+        res = {"ok": False, "errors": [lint]} if lint else harness.load(mono_payload(spec, scene_id, scene, common))
         if res["ok"]:
             ctx.project.write(f"scenes/{scene_id}/v{version}.glsl", cur)
             ctx.project.resolve(f"scenes/{scene_id}/v{version}.compile_errors.json").unlink(missing_ok=True)
@@ -397,6 +496,9 @@ def s4_compile(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str,
         if attempt >= ctx.cfg.budget.max_fix_attempts:
             break
         ce = parse_compile_errors(errors)
+        progress.emit("scene", scene=scene_id, phase="fix", version=version,
+                      detail=f"{len(errors)} errors, attempt {attempt + 1}/{max_fix}"
+                      + (" (style)" if ce.style and not ce.scene else ""))
         if ce.style and not ce.scene:
             fixed = _run_fixer(ctx, spec, scene_id, "style", style, ce.for_fixer("style"))
             if not fixed:
@@ -411,7 +513,7 @@ def s4_compile(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str,
     ctx.project.write(f"scenes/{scene_id}/v{version}.glsl", cur)
     ctx.project.write(
         f"scenes/{scene_id}/v{version}.compile_errors.json",
-        json.dumps([str(e).split("--- sorgente ---", 1)[0] for e in errors], indent=1),
+        json.dumps([error_log(e) for e in errors], indent=1),
     )
     return False, cur, errors
 
@@ -440,6 +542,24 @@ def probe_perf(ctx, harness: Harness, times: list[float], profile: str, renderer
         prof = harness.profile(times, rw, rh, repeats=3)
         floor = harness.profile(times, rw, rh, repeats=2, floor=True)
     return prof, floor, (rw, rh)
+
+
+def reference_ms(ctx, harness: Harness, res: tuple[int, int], renderer: str) -> float | None:
+    """ms della scena di riferimento su questo renderer e risoluzione, misurata una volta per run.
+
+    Carica un altro payload nell'harness: va chiamata quando la scena non serve più."""
+    cache = getattr(ctx, "ref_cache", None)
+    if cache is None:
+        cache = {}
+        ctx.ref_cache = cache
+    key = (renderer, int(res[0]), int(res[1]))
+    if key not in cache:
+        try:
+            cache[key] = measure_reference(harness, key[1], key[2], LIB)
+        except Exception as e:  # noqa: BLE001 - senza riferimento resta il solo gate assoluto
+            print(f"[perf] reference scene not measured: {e}")
+            cache[key] = None
+    return cache[key]
 
 
 def capture_bursts(ctx, harness: Harness, dur: float) -> list[list[bytes]]:
@@ -488,8 +608,11 @@ def s5_probe(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str, ver
     pdir = ctx.project.path / "scenes" / scene_id / f"v{version}.probe"
     issues_rel = f"scenes/{scene_id}/v{version}.issues.json"
     if (pdir / "metrics.json").exists() and ctx.project.exists(issues_rel):
+        progress.emit("scene", scene=scene_id, phase="probe", version=version, detail="from disk")
         return json.loads((pdir / "metrics.json").read_text(encoding="utf-8"))
 
+    progress.emit("scene", scene=scene_id, phase="probe", version=version,
+                  detail="frames, perf, flash at 30 fps")
     bpm = spec.timeline.bpm
     slot = next(s for s in spec.timeline.scenes if s.id == scene_id)
     dur = slot.bars * spec.timeline.beats_per_bar * 60 / bpm
@@ -497,7 +620,7 @@ def s5_probe(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str, ver
     payload = mono_payload(spec, scene_id, scene, common)
     res = harness.load(payload)
     if not res["ok"]:
-        raise PipelineError(f"S5: la scena {scene_id} v{version} non compila più:\n"
+        raise PipelineError(f"S5: scene {scene_id} v{version} no longer compiles:\n"
                             + "\n".join(res["errors"])[:2000])
     pdir.mkdir(parents=True, exist_ok=True)
 
@@ -512,6 +635,8 @@ def s5_probe(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str, ver
     fl = probe_flash(ctx, harness, dur)
     bursts = capture_bursts(ctx, harness, dur)
     seam = capture_seam(ctx, harness, dur) if spec.loop and len(spec.timeline.scenes) == 1 else None
+    # per ultimo: il riferimento sostituisce la scena nell'harness (il retro rende a 320×180 interni)
+    ref = reference_ms(ctx, harness, (320, 180) if prof_name == "retro" else (rw, rh), str(info["renderer"]))
 
     for i, p in enumerate(pngs):
         (pdir / f"key_{i:02d}_t{times[i]}s.png").write_bytes(p)
@@ -531,7 +656,7 @@ def s5_probe(ctx, harness: Harness, spec: DemoSpec, scene_id: str, src: str, ver
     raw = json.dumps(payload).encode()
     metrics = {
         "video": vm,
-        "perf": pf.model_dump(),
+        "perf": add_ratios(pf.model_dump(), ref),
         "flash": fl.model_dump(),
         "sizes": {"payload_gzip_bytes": len(gzip.compress(raw, 9))},
         "gpu": info["renderer"],
@@ -556,7 +681,10 @@ def s6_critique(ctx, spec: DemoSpec, scene: SceneBrief, version: int) -> dict:
 
     crit_rel = f"scenes/{scene.id}/v{version}.critique.json"
     if ctx.project.exists(crit_rel):  # resume: niente nuova chiamata
+        progress.emit("scene", scene=scene.id, phase="critic", version=version, detail="from disk")
         return CriticReport.model_validate_json(ctx.project.read(crit_rel)).model_dump()
+    progress.emit("scene", scene=scene.id, phase="critic", version=version,
+                  detail="the vision LLM looks at the frames")
 
     pdir = ctx.project.path / "scenes" / scene.id / f"v{version}.probe"
     metrics = json.loads((pdir / "metrics.json").read_text(encoding="utf-8"))
@@ -565,6 +693,8 @@ def s6_critique(ctx, spec: DemoSpec, scene: SceneBrief, version: int) -> dict:
     user = P.render(
         "critic_scene.md.j2",
         scene=scene,
+        art_direction=spec.art_direction,
+        palette_hint=", ".join(spec.palette_hint),
         metrics_json=json.dumps(metrics, default=str)[:4000],
     )
     if ctx.fake:
@@ -599,8 +729,8 @@ def history_text(ctx, scene_id: str) -> str:
         if ce.exists():
             errs = json.loads(ce.read_text(encoding="utf-8"))
             first = parse_compile_errors(errs)
-            msg = "; ".join((first.scene or first.style or first.other)[:3]) or "errore di compilazione"
-            lines.append(f"- v{v}: NON COMPILAVA ({msg[:300]}) — non ripetere lo stesso errore")
+            msg = "; ".join((first.scene or first.style or first.other)[:3]) or "compilation error"
+            lines.append(f"- v{v}: DID NOT COMPILE ({msg[:300]}) — do not repeat the same error")
             continue
         cp = sdir / f"v{v}.critique.json"
         if cp.exists():
@@ -608,6 +738,25 @@ def history_text(ctx, scene_id: str) -> str:
             blk = sum(1 for i in load_issues(sdir, v) if i.severity == "blocker")
             lines.append(f"- v{v}: verdict={c.get('verdict')} scores={c.get('scores')} blocker={blk}")
     return "\n".join(lines) or "-"
+
+
+def cost_text(ctx, scene_id: str, version: int) -> str:
+    """Costo misurato della versione rispetto alla scena di riferimento, per il prompt di revisione.
+
+    Nel run reale, senza questo dato, le revisioni "miglioravano" aggiungendo dettaglio e
+    passavano da 3,5× a 8,8× il riferimento (bloccate dal gate)."""
+    lim = ctx.cfg.realtime.max_ref_ratio_p95
+    p = ctx.project.path / "scenes" / scene_id / f"v{version}.probe" / "metrics.json"
+    try:
+        ratio = json.loads(p.read_text(encoding="utf-8"))["perf"].get("ref_ratio_p95")
+    except (OSError, ValueError, KeyError, TypeError):
+        ratio = None
+    if ratio is None:
+        return f"limit {lim:g}x the reference scene (not measured for v{version})"
+    if ratio > lim:
+        return f"v{version} costs {ratio:.1f}x the reference scene, OVER the {lim:g}x limit: make it cheaper first"
+    return (f"v{version} costs {ratio:.1f}x the reference scene (limit {lim:g}x): do not exceed the limit; "
+            "if you add detail, remove cost elsewhere")
 
 
 def math_rejections(ctx, scene_id: str, version: int) -> str:
@@ -643,6 +792,8 @@ def s7_revise(ctx, harness: Harness, spec: DemoSpec, scene: SceneBrief, version:
         if children:
             v = min(children)
             consumed.add(v)
+            progress.emit("scene", scene=scene.id, phase="revise", version=v,
+                          detail=f"v{version} → v{v} from disk")
             if (sdir / f"v{v}.compile_errors.json").exists():
                 return version, src
             prev_src = ctx.project.read(f"scenes/{scene.id}/v{v}.glsl")
@@ -661,11 +812,14 @@ def s7_revise(ctx, harness: Harness, spec: DemoSpec, scene: SceneBrief, version:
         issues_text=issues_text,
         history_text=history_text(ctx, scene.id),
         math_rejections=math_rejections(ctx, scene.id, version),
+        cost_text=cost_text(ctx, scene.id, version),
     )
     msgs = [
         {"role": "system", "content": P.system_prompt(spec.timeline.bpm)},
         {"role": "user", "content": user},
     ]
+    progress.emit("scene", scene=scene.id, phase="revise", version=version,
+                  detail=f"v{version} → new version from the critique")
     resp = chat_with_room(ctx.client("orchestrator"), msgs, step=f"revise:{scene.id}")
     env = parse_envelope(resp.content)
     new_version = next_version(sdir)
@@ -678,7 +832,7 @@ def s7_revise(ctx, harness: Harness, spec: DemoSpec, scene: SceneBrief, version:
         ctx.project.write(f"scenes/{scene.id}/v{new_version}.meta.json", json.dumps(meta, indent=1))
         ctx.project.write(f"scenes/{scene.id}/v{new_version}.glsl", "")
         ctx.project.write(f"scenes/{scene.id}/v{new_version}.compile_errors.json",
-                          json.dumps([f"envelope non valido: {e}"]))
+                          json.dumps([f"invalid envelope: {e}"]))
         return version, src
     try:  # Fase 6: il revise può emettere nuovi math_requests
         new_meta = ShaderSubmission.model_validate(env.json())
@@ -686,7 +840,7 @@ def s7_revise(ctx, harness: Harness, spec: DemoSpec, scene: SceneBrief, version:
         if new_meta.math_requests:
             run_oracle_for(ctx, scene.id, new_version, new_meta.math_requests)
     except (EnvelopeError, ValidationError) as exc:  # il meta è opzionale
-        print(f"[math] revise {scene.id}: nessun math_request ({exc})")
+        print(f"[math] revise {scene.id}: no math_requests ({exc})")
     meta["parent"] = version
     ctx.project.write(f"scenes/{scene.id}/v{new_version}.meta.json", json.dumps(meta, indent=1))
     ok, fixed, _errors = s4_compile(ctx, harness, spec, scene.id, new_src, new_version)
@@ -721,7 +875,7 @@ def s9_bundle(ctx, spec: DemoSpec, post: dict) -> dict:
             "overrides": {s.id: s.profile for s in spec.scenes if s.profile},
         },
         "post": post,
-        "quality": {"min_scale": 0.5, "target_fps": ctx.cfg.realtime.target_fps},
+        "quality": {"min_scale": 0.25, "target_fps": ctx.cfg.realtime.target_fps},
         "scenes": [  # in ordine di timeline, abbinati per id (non per posizione)
             {
                 "id": slot.id,
@@ -733,9 +887,12 @@ def s9_bundle(ctx, spec: DemoSpec, post: dict) -> dict:
             for slot in slots.values()
         ],
     }
+    from .music import best_music_src  # import tardivo: music importa questo modulo
+
     try:
         payload = build_payload_from_sources(
-            spec_dict, best_srcs, style_src(ctx), do_minify=True, math_srcs=math_srcs
+            spec_dict, best_srcs, style_src(ctx), do_minify=True, math_srcs=math_srcs,
+            audio_src=best_music_src(ctx),
         )
     except ValueError as e:
         raise PipelineError(f"S9: {e}") from e

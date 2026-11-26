@@ -21,6 +21,9 @@ export interface PlayerOptions {
   audioContext?: AudioContext;
   /** Limite fotosensibilità (0..1) applicato a beatFlash e alle transizioni flash. */
   flashLimit?: number;
+  /** Volume iniziale della musica 0..1 (default 1) e mute iniziale. */
+  volume?: number;
+  muted?: boolean;
   onReady?: () => void;
   onError?: (e: unknown) => void;
   onQualityChange?: (q: QualityState) => void;
@@ -58,6 +61,9 @@ export class Player {
   private audioFrag = "";
   private floatFBO: { fbo: WebGLFramebuffer; tex: WebGLTexture; width: number; height: number } | null = null;
   private ro: ResizeObserver | null = null;
+  private vol = 1;
+  private mute = false;
+  private readonly onWinResize = (): void => this.resize();
   private readonly onLost = (e: Event): void => {
     e.preventDefault();
     this.lost = true;
@@ -102,7 +108,11 @@ export class Player {
     if (opts.autoResize !== false && typeof ResizeObserver !== "undefined") {
       this.ro = new ResizeObserver(() => this.resize());
       this.ro.observe(canvas);
+      // il ResizeObserver non vede i cambi di devicePixelRatio (finestra spostata su un altro monitor)
+      window.addEventListener("resize", this.onWinResize);
     }
+    this.vol = opts.volume ?? 1;
+    this.mute = !!opts.muted;
   }
 
   get info(): DemogenInfo {
@@ -160,10 +170,11 @@ export class Player {
       this.audio = new AudioEngine(this.gl, this.audioFrag, tl.bpm, {
         prebufferS: 8,
         maxRenderMsPerFrame: 2,
-        loopDurS: p.meta.loop ? this.durationS : 0,
+        loopDurS: this.clock.loop ? this.durationS : 0,
         audioContext: ctx,
         ownsContext: prev ? prev.owned : false,
       });
+      this.audio.setVolume(this.vol, this.mute);
       if (ctx) await this.audio.unlock();
       if (!this.gestureBound && typeof window !== "undefined") {
         window.addEventListener("pointerdown", this.onGesture);
@@ -194,7 +205,7 @@ export class Player {
   play(): void {
     if (this.clock.isPlaying || this.lost || this.disposed) return;
     if (this.opts.autoResize !== false) this.resize();
-    if (!this.payload.meta.loop && this.clock.ended()) this.clock.seek(0);
+    if (!this.clock.loop && this.clock.ended()) this.clock.seek(0);
     this.clock.play();
     if (this.audio && !this.audio.locked) this.audio.start(this.clock.raw());
     this.lastFrameAt = 0;
@@ -232,9 +243,36 @@ export class Player {
     this.rafId = 0;
   }
 
+  /** Ferma e torna all'inizio: a schermo resta il primo frame. */
+  stop(): void {
+    this.pause();
+    this.seek(0);
+  }
+
+  get loop(): boolean {
+    return this.clock.loop;
+  }
+
+  /** true quando la demo, senza loop, è arrivata alla fine (play() riparte dall'inizio). */
+  get ended(): boolean {
+    return this.clock.ended(this.audio?.now());
+  }
+
+  /** Loop continuo a fine demo; si può cambiare anche mentre suona (l'audio riparte dalla stessa posizione). */
+  setLoop(on: boolean): void {
+    if (on === this.clock.loop) return;
+    const wasPlaying = this.clock.isPlaying;
+    if (wasPlaying) this.pause();
+    this.clock.setLoop(on);
+    this.audio?.setLoopDur(on ? this.durationS : 0);
+    if (wasPlaying) this.play();
+  }
+
   seek(t: number): void {
     this.clock.seek(t);
     this.audio?.seek(this.clock.raw());
+    // in pausa nessuno ridisegna: senza questo lo schermo resterebbe sul frame vecchio
+    if (!this.clock.isPlaying && this.compositor && !this.lost && !this.disposed) this.renderFrameAt(this.currentTime());
   }
 
   currentTime(): number {
@@ -258,7 +296,7 @@ export class Player {
 
   /** Renderizza un frame al tempo t (deterministico, usato anche dall'harness). */
   renderFrameAt(t: number, forceQuality?: QualityState): QualityState {
-    if (!this.compositor || !this.post) throw new Error("load() prima di renderFrameAt");
+    if (!this.compositor || !this.post) throw new Error("load() before renderFrameAt");
     const p = this.payload;
     const q = forceQuality ?? this.quality.state;
     const tw = this.clock.wrap(t); // stesso tempo (con loop) per profilo, stato e uniform
@@ -278,11 +316,26 @@ export class Player {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // retro: risoluzione interna fissa, quindi sul canvas si mantengono le proporzioni con bande nere
+    // (stirata, in una finestra verticale lo sprite diventava alto e stretto)
+    let vw = cw;
+    let vh = ch;
+    if (retro) {
+      const s = Math.min(cw / w, ch / h);
+      vw = Math.round(w * s);
+      vh = Math.round(h * s);
+      if (vw < cw || vh < ch) {
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      }
+    }
+    const vx = (cw - vw) >> 1;
+    const vy = (ch - vh) >> 1;
     const bloom: BloomParams | null = q.bloom && p.post?.bloom
       ? { threshold: p.post.bloom.threshold, intensity: p.post.bloom.intensity }
       : null;
-    if (bloom) this.post.apply(fbo.tex, cw, ch, bloom);
-    else this.compositor.blit(fbo.tex, cw, ch);
+    if (bloom) this.post.apply(fbo.tex, vw, vh, bloom, vx, vy);
+    else this.compositor.blit(fbo.tex, vw, vh, vx, vy);
     return q;
   }
 
@@ -294,7 +347,36 @@ export class Player {
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w;
       this.canvas.height = h;
+      // cambiare width/height svuota il canvas: in pausa (o a demo finita) si ridisegna subito il
+      // fotogramma corrente alla nuova dimensione; in riproduzione ci pensa il frame successivo
+      if (!this.clock.isPlaying && this.compositor && !this.lost && !this.disposed) {
+        this.renderFrameAt(this.currentTime());
+      }
     }
+  }
+
+  /** Volume della musica 0..1. */
+  get volume(): number {
+    return this.vol;
+  }
+
+  set volume(v: number) {
+    this.vol = Math.max(0, Math.min(1, Number.isFinite(v) ? v : 1));
+    this.audio?.setVolume(this.vol, this.mute);
+  }
+
+  get muted(): boolean {
+    return this.mute;
+  }
+
+  set muted(m: boolean) {
+    this.mute = m;
+    this.audio?.setVolume(this.vol, m);
+  }
+
+  /** true se la demo ha una colonna sonora. */
+  get hasAudio(): boolean {
+    return !!this.payload.audio;
   }
 
   captureDataURL(t: number): string {
@@ -309,7 +391,7 @@ export class Player {
    * (EXT_color_buffer_float) e legge NaN/Inf/luma — prima della quantizzazione.
    */
   sceneStats(t: number, width?: number, height?: number): Record<string, number> {
-    if (!this.compositor) throw new Error("load() prima di sceneStats");
+    if (!this.compositor) throw new Error("load() before sceneStats");
     const gl = this.gl;
     const ext = gl.getExtension("EXT_color_buffer_float");
     const w = width ?? this.canvas.width;
@@ -317,7 +399,7 @@ export class Player {
     const tw = this.clock.wrap(t);
     const st = stateAt(this.payload.timeline as Timeline, tw);
     const cp = this.progs.get(st.sceneId);
-    if (!cp) throw new Error(`scena ${st.sceneId} non compilata`);
+    if (!cp) throw new Error(`scene ${st.sceneId} not compiled`);
     if (!ext) {
       return { nan_ratio: 0, inf_ratio: 0, luma_mean: 0, float_path: 0 };
     }
@@ -365,6 +447,7 @@ export class Player {
     this.disposed = true;
     this.ro?.disconnect();
     this.ro = null;
+    if (typeof window !== "undefined") window.removeEventListener("resize", this.onWinResize);
     this.canvas.removeEventListener("webglcontextlost", this.onLost);
     this.canvas.removeEventListener("webglcontextrestored", this.onRestored);
     if (this.gestureBound) {

@@ -19,6 +19,7 @@ from typing import Any
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI, OpenAI
 
+from .. import progress
 from ..config import Config, resolve_role
 from .budget import Budget, BudgetExceeded
 from .providers import api_key_for, base_url_for
@@ -73,7 +74,7 @@ class LLMTruncated(Exception):
 
     def __init__(self, response: LLMResponse) -> None:
         super().__init__(
-            f"risposta troncata (finish_reason=length, {response.usage.get('completion_tokens', '?')} token)"
+            f"response truncated (finish_reason=length, {response.usage.get('completion_tokens', '?')} tokens)"
         )
         self.response = response
 
@@ -131,8 +132,8 @@ class LLMClient:
         key = api_key_for(prov)
         if not key and prov.type == "openrouter":
             raise ValueError(
-                f"Ruolo '{role}': chiave API mancante per il provider '{self.role_cfg.provider}' "
-                "(imposta providers.<nome>.api_key in demogen.yaml oppure la variabile di api_key_env)"
+                f"Role '{role}': missing API key for provider '{self.role_cfg.provider}' "
+                "(set providers.<name>.api_key in demogen.yaml or the environment variable named by api_key_env)"
             )
         self.api_key = key or "EMPTY"  # openai_compatible locali accettano una chiave fittizia
         self.model = self.role_cfg.model
@@ -198,7 +199,7 @@ class LLMClient:
 
     def _extract(self, resp, latency_s: float) -> LLMResponse:
         if not getattr(resp, "choices", None):
-            raise LLMBadResponse(f"risposta senza choices: {redact(str(resp))[:300]}")
+            raise LLMBadResponse(f"response without choices:{redact(str(resp))[:300]}")
         choice = resp.choices[0]
         content = (choice.message.content if choice.message is not None else None) or ""
         usage = resp.usage.model_dump() if resp.usage is not None else {}
@@ -250,12 +251,24 @@ class LLMClient:
             raise LLMTruncated(r)
         return r
 
-    def _precheck(self, kw: dict) -> None:
-        if self.budget is not None and not self.budget.can_afford(self.model, kw["max_tokens"]):
-            raise BudgetExceeded(
-                f"budget: una chiamata a {self.model} costerebbe più del residuo "
-                f"({self.budget.spent_usd:.4f}/{self.budget.max_total_cost_usd} USD)"
+    def _finalize_reported(self, r: LLMResponse, kw: dict, step: str, call: dict) -> LLMResponse:
+        """_finalize + dati della chiamata per l'evento `llm.end` (anche se la risposta è troncata)."""
+        try:
+            return self._finalize(r, kw, step)
+        finally:
+            call.update(
+                cost=r.cost_usd,
+                prompt_tokens=r.usage.get("prompt_tokens", 0) or 0,
+                completion_tokens=r.usage.get("completion_tokens", 0) or 0,
+                latency=r.latency_s,
             )
+
+    def _precheck(self, kw: dict) -> None:
+        if self.budget is None:
+            return
+        reason = self.budget.blocking_cap(self.model, kw["max_tokens"])
+        if reason is not None:
+            raise BudgetExceeded(f"budget: {reason}")
 
     @staticmethod
     def _retryable(e: Exception) -> bool:
@@ -278,22 +291,23 @@ class LLMClient:
     ) -> LLMResponse:
         kw = self._kwargs(messages, max_tokens, temperature, response_format, extra_body)
         last_err: Exception | None = None
-        for attempt in range(self.max_retries + 1):
-            self._precheck(kw)
-            t0 = time.monotonic()
-            try:
-                resp = self._client.chat.completions.create(**kw)
-                r = self._extract(resp, time.monotonic() - t0)
-            except Exception as e:  # noqa: BLE001 - classificato da _retryable
-                if not self._retryable(e):
-                    raise
-                last_err = e
-            else:
-                return self._finalize(r, kw, step)
-            if attempt < self.max_retries:
-                time.sleep(_backoff(attempt))
-        assert last_err is not None
-        raise last_err
+        with progress.llm_call(self.role, self.model, step) as call:
+            for attempt in range(self.max_retries + 1):
+                self._precheck(kw)
+                t0 = time.monotonic()
+                try:
+                    resp = self._client.chat.completions.create(**kw)
+                    r = self._extract(resp, time.monotonic() - t0)
+                except Exception as e:  # noqa: BLE001 - classificato da _retryable
+                    if not self._retryable(e):
+                        raise
+                    last_err = e
+                else:
+                    return self._finalize_reported(r, kw, step, call)
+                if attempt < self.max_retries:
+                    time.sleep(_backoff(attempt))
+            assert last_err is not None
+            raise last_err
 
     async def achat(
         self,
@@ -307,19 +321,20 @@ class LLMClient:
     ) -> LLMResponse:
         kw = self._kwargs(messages, max_tokens, temperature, response_format, extra_body)
         last_err: Exception | None = None
-        for attempt in range(self.max_retries + 1):
-            self._precheck(kw)
-            t0 = time.monotonic()
-            try:
-                resp = await self._aclient.chat.completions.create(**kw)
-                r = self._extract(resp, time.monotonic() - t0)
-            except Exception as e:  # noqa: BLE001 - classificato da _retryable
-                if not self._retryable(e):
-                    raise
-                last_err = e
-            else:
-                return self._finalize(r, kw, step)
-            if attempt < self.max_retries:
-                await asyncio.sleep(_backoff(attempt))  # mai time.sleep: bloccherebbe le altre scene
-        assert last_err is not None
-        raise last_err
+        with progress.llm_call(self.role, self.model, step) as call:
+            for attempt in range(self.max_retries + 1):
+                self._precheck(kw)
+                t0 = time.monotonic()
+                try:
+                    resp = await self._aclient.chat.completions.create(**kw)
+                    r = self._extract(resp, time.monotonic() - t0)
+                except Exception as e:  # noqa: BLE001 - classificato da _retryable
+                    if not self._retryable(e):
+                        raise
+                    last_err = e
+                else:
+                    return self._finalize_reported(r, kw, step, call)
+                if attempt < self.max_retries:
+                    await asyncio.sleep(_backoff(attempt))  # mai time.sleep: bloccherebbe le altre scene
+            assert last_err is not None
+            raise last_err

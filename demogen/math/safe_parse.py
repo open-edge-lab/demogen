@@ -65,12 +65,12 @@ dot cross normalize reflect refract texture round trunc isnan isinf
 """.split())
 
 
-def check_identifier(name: str, what: str = "nome") -> None:
+def check_identifier(name: str, what: str = "name") -> None:
     """Un identificatore che finisce nel GLSL: valido, non riservato, niente gl_ né __."""
     if not re.fullmatch(r"[A-Za-z_]\w*", name or ""):
-        raise UnsafeExpressionError(f"{what} non valido: {name!r}")
+        raise UnsafeExpressionError(f"invalid {what}: {name!r}")
     if name in GLSL_RESERVED or name.startswith("gl_") or "__" in name:
-        raise UnsafeExpressionError(f"{what} riservato in GLSL: {name!r}")
+        raise UnsafeExpressionError(f"{what} is reserved in GLSL: {name!r}")
 
 _ALLOWED_NODES = (
     ast.Expression, ast.BinOp, ast.UnaryOp, ast.Constant, ast.Name, ast.Load,
@@ -96,35 +96,35 @@ def parse_safe(expr: str) -> ast.Expression:
     call_funcs = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
     for node in ast.walk(tree):
         if not isinstance(node, _ALLOWED_NODES):
-            raise UnsafeExpressionError(f"node non ammesso: {type(node).__name__}")
+            raise UnsafeExpressionError(f"node not allowed: {type(node).__name__}")
         if isinstance(node, ast.Constant) and (
             isinstance(node.value, bool) or not isinstance(node.value, (int, float))
         ):
-            raise UnsafeExpressionError("solo costanti numeriche")
+            raise UnsafeExpressionError("only numeric constants are allowed")
         if isinstance(node, ast.Name):
             if node.id.startswith("__"):
-                raise UnsafeExpressionError("nomi dunder vietati")
+                raise UnsafeExpressionError("dunder names are forbidden")
             if node.id in FUNCTIONS:
                 if id(node) not in call_funcs:  # `sin + 1`: una funzione usata come valore
-                    raise UnsafeExpressionError(f"funzione {node.id} usata senza chiamarla")
+                    raise UnsafeExpressionError(f"function {node.id} used without calling it")
             elif node.id not in CONSTANTS:
-                check_identifier(node.id, "variabile")
+                check_identifier(node.id, "variable")
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
             # x**2..4 diventa moltiplicazione (stessa semantica ovunque); altrimenti pow(),
             # che in GLSL è indefinito con base negativa (il runner lo rispecchia)
             r = node.right
             if not (isinstance(r, ast.Constant) and not isinstance(r.value, bool)
                     and isinstance(r.value, (int, float)) and float(r.value) in (2.0, 3.0, 4.0)):
-                raise UnsafeExpressionError("** solo con esponente costante 2, 3 o 4: usa pow(x, y)")
+                raise UnsafeExpressionError("** only with a constant exponent 2, 3 or 4: use pow(x, y)")
         if isinstance(node, ast.Call):
             if not isinstance(node.func, ast.Name) or node.func.id not in FUNCTIONS:
-                raise UnsafeExpressionError(f"chiamata non in whitelist: {ast.dump(node.func)}")
+                raise UnsafeExpressionError(f"call not in whitelist: {ast.dump(node.func)}")
             if node.keywords:
                 raise UnsafeExpressionError("no keyword arguments")
             want = ARITY[node.func.id]
             if len(node.args) != want:
                 raise UnsafeExpressionError(
-                    f"{node.func.id} vuole {want} argomenti, ne ha {len(node.args)}"
+                    f"{node.func.id} takes {want} arguments, got {len(node.args)}"
                 )
     return tree
 
@@ -153,7 +153,7 @@ except ImportError:
 def _gl_pow(a, b):
     # GLSL: pow(x, y) con x < 0 è indefinito (NaN sulle GPU): il claim non deve contarci
     if a < 0 or (a == 0 and b <= 0):
-        raise ValueError("pow con base negativa (indefinito in GLSL)")
+        raise ValueError("pow with negative base (undefined in GLSL)")
     return math.pow(a, b)
 
 
@@ -197,7 +197,7 @@ def evaluate(code, names, env):
         elif n in env:
             g[n] = float(env[n])
         else:
-            raise ValueError(f"nome non ammesso: {n}")
+            raise ValueError(f"name not allowed: {n}")
     return float(eval(code, g, {}))  # noqa: S307 - AST validata dalla whitelist
 
 data = json.load(sys.stdin)
@@ -246,7 +246,7 @@ def run_isolated(code: str, stdin_text: str, timeout_s: float = DEFAULT_TIMEOUT_
             while proc.poll() is None:
                 rss = ps.memory_info().rss + sum(c.memory_info().rss for c in ps.children(recursive=True))
                 if rss > limit:
-                    killed["reason"] = f"memoria: RSS {rss >> 20} MB > {max_rss_mb:.0f} MB"
+                    killed["reason"] = f"memory: RSS {rss >> 20} MB > {max_rss_mb:.0f} MB"
                     proc.kill()
                     return
                 time.sleep(0.05)
@@ -258,7 +258,7 @@ def run_isolated(code: str, stdin_text: str, timeout_s: float = DEFAULT_TIMEOUT_
     try:
         out, err = proc.communicate(stdin_text, timeout=timeout_s)
     except subprocess.TimeoutExpired:
-        killed.setdefault("reason", f"timeout: oltre {timeout_s:.1f} s")
+        killed.setdefault("reason", f"timeout: over {timeout_s:.1f} s")
         proc.kill()
         out, err = proc.communicate()
     watcher.join(timeout=1.0)
@@ -277,6 +277,6 @@ def eval_points(expr: str, points: list[dict[str, float]], timeout_s: float = DE
     envs = [{k: float(v) for k, v in p.items()} for p in points]
     code, out, err = run_isolated(_RUNNER, json.dumps({"expr": expr, "envs": envs}), timeout_s, max_rss_mb)
     if code != 0:
-        raise UnsafeExpressionError(f"subprocess fallita: {err.strip()[:300]}")
+        raise UnsafeExpressionError(f"subprocess failed: {err.strip()[:300]}")
     results = json.loads(out.strip().splitlines()[-1])
     return [r["value"] if r["ok"] else None for r in results]

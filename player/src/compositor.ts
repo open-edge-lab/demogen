@@ -77,7 +77,7 @@ function makeProg(gl: WebGL2RenderingContext, vert: string, frag: string): WebGL
   gl.deleteShader(fs);
   if (!ok) {
     gl.deleteProgram(p);
-    throw new Error(log ?? "link fallito");
+    throw new Error(log ?? "link failed");
   }
   return p;
 }
@@ -144,7 +144,7 @@ export class Compositor {
   render(env: RenderEnv, progByScene: Map<string, CompiledProgram>): { fbo: FBO; drawn: number } {
     const st = env.state;
     const cur = progByScene.get(st.sceneId);
-    if (!cur) throw new Error(`scena ${st.sceneId} non compilata`);
+    if (!cur) throw new Error(`scene ${st.sceneId} not compiled`);
     this.ensureSize(env.width, env.height);
     const hasTransition =
       st.transition !== "cut" && st.prevSceneId !== null && st.nextSceneId !== null;
@@ -155,7 +155,7 @@ export class Compositor {
     // stateAt rende sempre attiva la scena USCENTE: quella entrante è nextSceneId, col suo tempo
     const otherId = st.nextSceneId!;
     const other = progByScene.get(otherId);
-    if (!other) throw new Error(`scena ${otherId} non compilata`);
+    if (!other) throw new Error(`scene ${otherId} not compiled`);
     this.drawScene(this.fboA, cur, env);
     const incoming: TimelineState = {
       ...st,
@@ -181,10 +181,10 @@ export class Compositor {
     return { fbo: this.fboC, drawn: 2 };
   }
 
-  /** Blit di una texture sul framebuffer corrente (canvas o FBO), a w×h. */
-  blit(tex: WebGLTexture, w: number, h: number): void {
+  /** Blit di una texture sul framebuffer corrente (canvas o FBO), a w×h con l'angolo in (x, y). */
+  blit(tex: WebGLTexture, w: number, h: number, x = 0, y = 0): void {
     const gl = this.gl;
-    gl.viewport(0, 0, w, h);
+    gl.viewport(x, y, w, h);
     gl.useProgram(this.blitProg);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tex);

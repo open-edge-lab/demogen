@@ -27,3 +27,4 @@ secrets/
 llm_calls/
 *.log
 .demogen_cache/
+.playwright-mcp/

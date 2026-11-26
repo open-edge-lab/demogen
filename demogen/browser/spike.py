@@ -34,7 +34,7 @@ def _run_mode(mode: str, out_dir: Path) -> dict:
     with Harness(gpu=mode, headless=True, channel=channel) as h:  # type: ignore[arg-type]
         res = h.load(SPIKE_PAYLOAD)
         if not res["ok"]:
-            raise RuntimeError("spike: lo shader non compila:\n" + "\n".join(res["errors"]))
+            raise RuntimeError("spike: the shader does not compile:\n" + "\n".join(res["errors"]))
         info = h.info()
         png = h.capture([1.0], 640, 360)[0]
         prof = h.profile([0.0, 0.5, 1.0, 2.0], 640, 360, repeats=3)
@@ -52,12 +52,12 @@ def run_spike(out_dir: Path | None = None) -> list[dict]:
         try:
             results.append(_run_mode(mode, out_dir))
         except Exception as e:  # noqa: BLE001 - la GPU reale può mancare (CI, VM)
-            print(f"[{mode}] non disponibile: {e}")
+            print(f"[{mode}] not available: {e}")
     for r in results:
         info = r["info"]
         ms = {t: round(v, 3) for t, v in r["profile"]["samples"].items()}
         print(f"[{r['mode']}] renderer={info['renderer']!r} webgl2={info['webgl2']} ({r['profile']['method']})")
-        print(f"  ms/frame (mediana): {ms}  ->  {r['png']}")
+        print(f"  ms/frame (median):{ms}  ->  {r['png']}")
     return results
 
 

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from demogen.browser import session as sess_mod
-from demogen.browser.session import BrowserSession, is_local_url
+from demogen.browser.session import BrowserSession, is_console_noise, is_local_url
 from tests.conftest import require_browser, skip_or_fail
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +40,14 @@ def test_skip_or_fail_in_ci_fallisce(monkeypatch) -> None:
 )
 def test_is_local_url(url: str, ok: bool) -> None:
     assert is_local_url(url, 5000) is ok
+
+
+def test_gli_avvisi_di_prestazione_del_driver_gl_non_finiscono_nel_log() -> None:
+    # run reale: 8 righe "GPU stall due to ReadPixels" per generazione, provocate dalla cattura dei frame
+    assert is_console_noise("[.WebGL-0x3b400622a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, "
+                            "High): GPU stall due to ReadPixels")
+    assert not is_console_noise("WebGL: CONTEXT_LOST_WEBGL: loseContext: context lost")
+    assert not is_console_noise("GL Driver Message (OpenGL, Error, ...): invalid operation")
 
 
 class _Boom(RuntimeError):

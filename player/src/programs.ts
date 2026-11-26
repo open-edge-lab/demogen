@@ -116,7 +116,7 @@ export function compileAll(
     const src = buildFragment(headerFor(s), common, s.src);
     const fs = gl.createShader(gl.FRAGMENT_SHADER);
     const prog = gl.createProgram();
-    if (!fs || !prog) throw new Error("createShader/createProgram fallita");
+    if (!fs || !prog) throw new Error("createShader/createProgram failed");
     gl.shaderSource(fs, src);
     gl.compileShader(fs);
     gl.attachShader(prog, vs);
@@ -130,9 +130,9 @@ export function compileAll(
     let err: Error | null = null;
     pending.forEach((p, i) => {
       if (!err && !gl.getShaderParameter(p.fs, gl.COMPILE_STATUS)) {
-        err = new Error(`Errore compilazione shader:\n${gl.getShaderInfoLog(p.fs)}\n--- sorgente ---\n${p.src}`);
+        err = new Error(`Shader compile error:\n${gl.getShaderInfoLog(p.fs)}\n--- sorgente ---\n${p.src}`);
       } else if (!err && !gl.getProgramParameter(p.prog, gl.LINK_STATUS)) {
-        err = new Error(`Errore di link (scena ${p.id}):\n${gl.getProgramInfoLog(p.prog)}`);
+        err = new Error(`Link error (scene ${p.id}):\n${gl.getProgramInfoLog(p.prog)}`);
       }
       gl.detachShader(p.prog, vs);
       gl.detachShader(p.prog, p.fs);

@@ -8,7 +8,7 @@ export interface QualityLimits {
   bloom: boolean;
 }
 
-export const DEFAULT_LIMITS: QualityLimits = { targetFps: 60, minScale: 0.5, bloom: true };
+export const DEFAULT_LIMITS: QualityLimits = { targetFps: 60, minScale: 0.25, bloom: true };
 
 export interface QualityState {
   scale: number;
@@ -16,7 +16,7 @@ export interface QualityState {
   bloom: boolean;
 }
 
-const BASE_SCALES = [1.0, 0.85, 0.7, 0.5];
+const BASE_SCALES = [1.0, 0.85, 0.7, 0.5, 0.35];
 const QUALITIES = [1.0, 0.5, 0.0];
 
 export class QualityController {

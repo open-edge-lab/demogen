@@ -1,6 +1,17 @@
 # Role: orchestrator — write scene {{ scene.id }} (retro profile, 320x180)
 
 Demo: {{ spec.title }} — {{ spec.art_direction }}
+Palette: {{ spec.palette_hint | join(", ") or "-" }}
+{% if style_api %}
+Shared functions in style.glsl (call them, do not redefine them; pass every argument exactly as its comment documents it, in that order and with those units):
+{{ style_api }}
+{% endif %}
+{% if spec.scenes | length > 1 %}
+Other scenes of the demo (a subject they share must look identical here: shape, size, colors, screen position):
+{% for s in spec.scenes if s.id != scene.id %}
+- {{ s.id }} "{{ s.title }}": {{ s.description }}
+{% endfor %}
+{% endif %}
 Scene brief:
 - title: {{ scene.title }}
 - description: {{ scene.description }}
@@ -8,8 +19,8 @@ Scene brief:
 - techniques: {{ scene.techniques | join(", ") }}
 - perf_tier: {{ scene.perf_tier }}
 
-Retro rules: iResolution is the fixed internal resolution, fragCoord in those pixels. Use 2D effects from `retro/effects.glsl` (plasma2, starfield, copperBar), `retro/font.glsl` for text scrollers (drawText with uText), palette via finalize()/retroFinalize(). Budget: p95 <= {{ budget_p95 }} ms at {{ res }}.
-Light 3D only if perf_tier=light. No heavy raymarching.
+Retro rules: iResolution is the fixed internal resolution, fragCoord in those pixels. Use 2D effects from `retro/effects.glsl` (plasma2, starfield, copperBar), `retro/font.glsl` for text scrollers (drawText with uText), work in display colors (palette hex / 255, never converted to linear) and finish with `fragColor = vec4(finalize(col, uv), 1.0);`: the style's finalize quantizes to its PALETTE, do not call retroFinalize with a palette of your own. Budget: p95 <= {{ budget_p95 }} ms at {{ res }}.
+Light 3D only if perf_tier=light. No heavy raymarching. Cost limit: at most {{ max_ref_ratio }}x a reference raymarched tunnel at the same resolution.
 
 Anti-cliché (retro): no generic full-screen rainbow plasma, no plain sine scroller, copper bar only as one element, no rainbow palette without art direction.
 Avoid: {{ spec.avoid | join(", ") }}

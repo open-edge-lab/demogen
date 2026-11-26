@@ -1,5 +1,8 @@
 # Role: critic — evaluate a demoscene scene (vision + metrics). Do NOT write code.
 
+Demo art direction: {{ art_direction or "-" }}
+Palette hint: {{ palette_hint or "-" }}
+
 Scene brief:
 - title: {{ scene.title }}
 - description: {{ scene.description }}
@@ -12,7 +15,7 @@ Metrics (JSON):
 {{ metrics_json }}
 
 Score 1..10 with anchored definitions:
-- brief: does it match the description?
+- brief: does it match the description? Check orientation against the brief (ground, horizon, gravity, a character's up and facing: nothing upside down or mirrored unless asked) and the colors against the palette hint; an upside-down subject or a different palette is a major issue.
 - composition: framing, readability
 - color: palette coherence, contrast
 - motion: does the burst strip show intentional motion tied to the beat?

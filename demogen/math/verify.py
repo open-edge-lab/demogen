@@ -43,14 +43,14 @@ def _finite(claim: dict, key: str, default: float | None = None) -> float:
     """Float finito da `claim[key]` (ValueError se assente senza default, non numerico o inf/nan)."""
     if key not in claim:
         if default is None:
-            raise ValueError(f"claim senza '{key}'")
+            raise ValueError(f"claim without '{key}'")
         return default
     v = claim[key]
     if isinstance(v, bool) or not isinstance(v, (int, float)):
-        raise ValueError(f"claim '{key}' non numerico: {v!r}")
+        raise ValueError(f"claim '{key}' is not numeric: {v!r}")
     v = float(v)
     if not math.isfinite(v):
-        raise ValueError(f"claim '{key}' non finito: {v}")
+        raise ValueError(f"claim '{key}' is not finite: {v}")
     return v
 
 
@@ -62,22 +62,22 @@ def _claim_params(claim: dict) -> tuple[list[list[float]], float, float, int]:
     - domain: 1..4 coppie finite [lo, hi] con lo < hi e |v| <= 1e4.
     """
     if not isinstance(claim, dict):
-        raise ValueError("claim non è un oggetto")
+        raise ValueError("claim is not an object")
     domain = claim.get("domain", [[-2.0, 2.0], [-2.0, 2.0]])
     if not isinstance(domain, list) or not 1 <= len(domain) <= MAX_INTERVALS:
-        raise ValueError(f"domain deve avere 1..{MAX_INTERVALS} intervalli: {domain!r}")
+        raise ValueError(f"domain must have 1..{MAX_INTERVALS} intervals: {domain!r}")
     dom: list[list[float]] = []
     for iv in domain:
         if not isinstance(iv, (list, tuple)) or len(iv) != 2:
-            raise ValueError(f"intervallo non valido: {iv!r}")
+            raise ValueError(f"invalid interval: {iv!r}")
         lo, hi = (_finite({"v": x}, "v") for x in iv)
         if not lo < hi or max(abs(lo), abs(hi)) > MAX_ABS_DOMAIN:
-            raise ValueError(f"intervallo non valido: [{lo}, {hi}]")
+            raise ValueError(f"invalid interval: [{lo}, {hi}]")
         dom.append([lo, hi])
     tol = _finite(claim, "tol", 1e-3)
     tol_grad = _finite(claim, "tol_grad", 5e-2)
     if tol <= 0 or tol_grad <= 0:
-        raise ValueError("tol e tol_grad devono essere > 0")
+        raise ValueError("tol and tol_grad must be > 0")
     n = int(_finite(claim, "samples", 64))
     return dom, min(tol, MAX_TOL), min(tol_grad, MAX_TOL_GRAD), max(MIN_SAMPLES, min(n, MAX_SAMPLES))
 
@@ -95,7 +95,7 @@ def _need(n: int) -> int:
 
 def _too_few(kind: str, valid: int, n: int) -> VerifyResult:
     return VerifyResult(ok=False, kind=kind, n_samples=valid,
-                        detail=f"solo {valid}/{n} punti valutati (servono >= {_need(n)})")
+                        detail=f"only {valid}/{n} points evaluated (need >= {_need(n)})")
 
 
 def verify_claim(req: MathRequest, seed: int = 42) -> VerifyResult:
@@ -146,14 +146,14 @@ def verify_claim(req: MathRequest, seed: int = 42) -> VerifyResult:
         max_ratio = max(ratios)
         return VerifyResult(
             ok=max_ratio <= bound + tol, kind=kind,
-            detail=f"max |df|/dist={max_ratio:.4f} vs bound={bound} su {len(ratios)} coppie vicine",
+            detail=f"max |df|/dist={max_ratio:.4f} vs bound={bound} over {len(ratios)} nearby pairs",
             max_err=max_ratio, n_samples=len(ratios),
         )
 
     if kind == "periodic_path":
         period = _finite(claim, "period")
         if "t" not in vars_:
-            return VerifyResult(ok=False, kind=kind, detail="periodic_path senza variabile t")
+            return VerifyResult(ok=False, kind=kind, detail="periodic_path without variable t")
         pts = [rand_point() for _ in range(n)]
         shifted = [p | {"t": p["t"] + period} for p in pts]
         vals = eval_points(expr, pts + shifted)
@@ -182,7 +182,7 @@ def verify_claim(req: MathRequest, seed: int = 42) -> VerifyResult:
         ok = abs(v0) <= tol and abs(v1 - 1.0) <= tol and monotonic
         return VerifyResult(
             ok=ok, kind=kind,
-            detail=f"f({lo})={v0}, f({hi})={v1}, monotona={monotonic}",
+            detail=f"f({lo})={v0}, f({hi})={v1}, monotonic={monotonic}",
             max_err=max(abs(v0), abs(v1 - 1.0)), n_samples=len(good), samples=good[:8],
         )
 
@@ -209,7 +209,7 @@ def _verify_sdf(expr, claim, names, vars_, dom, n, tol_grad, rand_point) -> Veri
     kind = "sdf"
     spatial = [v for v in vars_ if v != "t" and v in names]
     if not spatial:
-        return VerifyResult(ok=False, kind=kind, detail="sdf senza variabili spaziali usate")
+        return VerifyResult(ok=False, kind=kind, detail="sdf uses no spatial variables")
     inside_neg = bool(claim.get("inside_negative", True))
     base = [rand_point() for _ in range(n)]
     evals: list[dict[str, float]] = []
@@ -230,7 +230,7 @@ def _verify_sdf(expr, claim, names, vars_, dom, n, tol_grad, rand_point) -> Veri
     inside_pt = None
     if inside is not None:
         if not isinstance(inside, list) or len(inside) != len(spatial):
-            raise ValueError(f"inside deve avere {len(spatial)} coordinate ({spatial})")
+            raise ValueError(f"inside must have {len(spatial)} coordinates ({spatial})")
         inside_pt = rand_point() | {v: float(c) for v, c in zip(spatial, inside)}
     vals = eval_points(expr, evals + ring + ([inside_pt] if inside_pt else []))
     stride = 1 + 2 * len(spatial)
@@ -263,10 +263,10 @@ def _verify_sdf(expr, claim, names, vars_, dom, n, tol_grad, rand_point) -> Veri
     return VerifyResult(
         ok=ok_sign and ok_grad,
         kind=kind,
-        detail=(f"|grad|-1 max={max_err} su {len(errs)} punti vicino alla superficie ({', '.join(spatial)}), "
-                f"segno ok={ok_sign} (dentro<0: {has_neg}, bordo>0: {ring_ok}, inside: {inside_ok})"
+        detail=(f"|grad|-1 max={max_err} over {len(errs)} points near the surface ({', '.join(spatial)}), "
+                f"sign ok={ok_sign} (interior<0: {has_neg}, boundary>0: {ring_ok}, inside: {inside_ok})"
                 + ("" if has_neg or inside_pt is not None else
-                   " — nessun campione dentro la forma: per forme sottili indica `inside` nel claim")),
+                   " — no sample fell inside the shape: for thin shapes give an `inside` point in the claim")),
         max_err=max_err,
         n_samples=len(f0s),
         samples=f0s[:8],

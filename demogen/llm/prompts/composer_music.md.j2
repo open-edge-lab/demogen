@@ -1,0 +1,28 @@
+Compose the soundtrack of a realtime demoscene production.
+
+Demo: "{{ spec.title }}": {{ "%.1f"|format(spec.duration_s) }} s, {{ "%g"|format(spec.timeline.bpm) }} BPM, {{ spec.timeline.beats_per_bar }} beats per bar, {{ "loops forever" if spec.loop else "plays once" }}.
+Prompt of the demo: {{ spec.prompt }}
+{% if music_prompt %}Music requested by the user (this comes FIRST: follow genre, mood and instruments it asks for):
+{{ music_prompt }}
+{% endif %}Audio direction from the brief: {{ spec.audio_brief or "-" }}
+Visual art direction (match the mood): {{ spec.art_direction or "-" }}
+
+Timeline: the music must follow these sections, changing energy and instrumentation at the bar boundaries (the visuals cut or fade there):
+{% for s in sections %}- {{ s.id }} "{{ s.title }}": bars {{ "%g"|format(s.start_bar) }}–{{ "%g"|format(s.end_bar) }} ({{ s.t0 }}–{{ s.t1 }} s), enters with "{{ s.transition }}". Visual: {{ s.mood }} Motion: {{ s.motion }}
+{% endfor %}
+## Contract (checked automatically)
+- Write `void mainAudio(out vec4 o, in float t)` plus any helper functions. `t` = seconds from the start of the demo{% if spec.loop %} (already wrapped modulo the duration){% endif %}. Stereo output: `o.x` = left, `o.y` = right, in [-1, 1]; `o.z`, `o.w` are ignored.
+- Available: `#define BPM`, `uniform float iSampleRate`. Derive the rhythm from `t` only:
+  `float beatDur = 60.0 / BPM; float beat = floor(t / beatDur); float ph = fract(t / beatDur);`
+  `float bar = floor(beat / {{ spec.timeline.beats_per_bar }}.0);` — do NOT use iTime, uBeat, uBeatPhase, uBar (they are per audio block, not per sample).
+- Library functions already available (do NOT redefine them):
+{{ library }}
+- You can also write your own voices: sine `sin(6.2831853*f*t)`, saw `fract(f*t)*2.0-1.0`, square `sign(sin(...))`, envelopes `exp(-k*dt)`, filters by mixing, chords by summing notes `f = 55.0*pow(2.0, semi/12.0)`.
+- Rhythm: drum hits must start exactly on the beat grid (time since hit = `ph * beatDur`, or offsets of beatDur/2, beatDur/4): mean onset error must stay under {{ max_onset_ms }} ms.
+- Loudness: never silent except an intro/outro of at most 2 bars; keep the mix around 0.6-0.8 peak and finish with a soft clip `s = tanh(s)` (no hard clipping at 1.0).
+- Cost: this runs for EVERY sample (~44100 per second): at least {{ min_realtime }}x faster than realtime is required. No loops over 8 iterations, no raymarching, at most ~6-8 voices.
+- Deterministic: randomness only from `hash11` of the sample index.
+- GLSL ES 3.00: float literals with a dot (1.0), no implicit int/float conversions, no recursion, no textures.
+
+## Answer
+One ```json block {"notes": "genre, key, instruments, how sections evolve", "key": "e.g. A minor"} and one ```glsl block with the code.

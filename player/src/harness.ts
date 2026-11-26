@@ -45,13 +45,13 @@ async function load(payload: unknown): Promise<{ ok: boolean; errors: string[]; 
 }
 
 function setSize(w: number, h: number): void {
-  if (!current) throw new Error("load() prima");
+  if (!current) throw new Error("call load() first");
   current.canvas.width = w;
   current.canvas.height = h;
 }
 
 function capture(opts: { times: number[]; width: number; height: number }): string[] {
-  if (!current) throw new Error("load() prima");
+  if (!current) throw new Error("call load() first");
   setSize(opts.width, opts.height);
   return opts.times.map((t) => current!.player.captureDataURL(t));
 }
@@ -95,7 +95,7 @@ function cellSequence(opts: {
   height: number;
   grid?: number;
 }): number[][][] {
-  if (!current) throw new Error("load() prima");
+  if (!current) throw new Error("call load() first");
   const { player } = current;
   const gl = player.gl;
   const w = opts.width;
@@ -137,7 +137,7 @@ function cellSequence(opts: {
 
 /** Statistiche float (NaN/Inf/luma) per tempo, su FBO RGBA32F. */
 function stats(opts: { times: number[]; width: number; height: number }): Record<number, unknown>[] {
-  if (!current) throw new Error("load() prima");
+  if (!current) throw new Error("call load() first");
   setSize(opts.width, opts.height);
   return opts.times.map((t) => current!.player.sceneStats(t, opts.width, opts.height));
 }
@@ -162,7 +162,7 @@ function profile(opts: {
   /** true: misura alla qualità minima (pavimento della scala adattiva). */
   floor?: boolean;
 }): { method: string; samples: Record<number, number> } {
-  if (!current) throw new Error("load() prima");
+  if (!current) throw new Error("call load() first");
   const { player } = current;
   const gl = player.gl;
   setSize(opts.width, opts.height);
@@ -226,10 +226,10 @@ function state(tl: unknown, t: number): unknown {
 /** Fase 2: renderizza `blocks` blocchi audio a partire dal tempo t0 (secondi).
  *  Ritorna array di Float32Array stereo (interleaved L,R). */
 function renderAudio(opts: { t0: number; blocks: number; pack8?: boolean }): number[][] {
-  if (!current) throw new Error("load() prima");
+  if (!current) throw new Error("call load() first");
   const { player } = current;
   let a = player.audio;
-  if (!a) throw new Error("payload senza audio");
+  if (!a) throw new Error("payload has no audio");
   // pack8: engine temporaneo col fallback RGBA8 forzato (test del percorso senza float FBO)
   const tmp = opts.pack8 ? new AudioEngine(player.gl, player.audioFragment, player.bpm, { forcePack8: true }) : null;
   if (tmp) a = tmp;
@@ -243,5 +243,28 @@ function renderAudio(opts: { t0: number; blocks: number; pack8?: boolean }): num
   return out;
 }
 
-const api = { load, capture, cellSequence, cellSequenceB64, stats, profile, info, state, renderAudio };
+/** Come renderAudio ma in un unico blob Float32 base64 (milioni di campioni: il JSON di numeri è lento),
+ *  con la frequenza di campionamento e i ms spesi SOLO a calcolare i blocchi (per il gate di costo). */
+function renderAudioB64(opts: { t0: number; blocks: number }): { sr: number; ms: number; data: string } {
+  if (!current) throw new Error("call load() first");
+  const a = current.player.audio;
+  if (!a) throw new Error("payload has no audio");
+  const first = Math.floor(opts.t0 / a.chunkDur);
+  const parts: Float32Array[] = [];
+  const t0 = performance.now();
+  for (let i = 0; i < opts.blocks; i++) parts.push(a.renderBlock(first + i));
+  const ms = performance.now() - t0;
+  const all = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let k = 0;
+  for (const p of parts) {
+    all.set(p, k);
+    k += p.length;
+  }
+  const bytes = new Uint8Array(all.buffer);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { sr: a.sampleRateHz, ms, data: btoa(bin) };
+}
+
+const api = { load, capture, cellSequence, cellSequenceB64, stats, profile, info, state, renderAudio, renderAudioB64 };
 (window as unknown as { __demogen: typeof api }).__demogen = api;

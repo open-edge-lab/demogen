@@ -50,14 +50,27 @@ Opzioni di `new Player(canvas, payload, opts)`:
 | Opzione | Default | Note |
 | --- | --- | --- |
 | `autoPlay` | `true` | parte dopo `load()` |
-| `autoResize` | `true` | il buffer del canvas segue la dimensione CSS × devicePixelRatio (max 2) con un `ResizeObserver`; `false` se la dimensione la gestisci tu |
+| `autoResize` | `true` | il buffer del canvas segue la dimensione CSS × devicePixelRatio (max 2) con un `ResizeObserver` (più `resize` della finestra per i cambi di devicePixelRatio); in pausa o a demo finita il frame corrente viene ridisegnato alla nuova dimensione; `false` se la dimensione la gestisci tu |
 | `audioContext` | — | un `AudioContext` già creato e sbloccato **nel gesto utente** (click): senza, l'audio parte al primo click/tasto successivo |
 | `flashLimit` | `1` | limite fotosensibilità (0..1) per `beatFlash` e le transizioni flash; il player lo abbassa comunque sotto soglia WCAG se i beat superano 3/s o con `prefers-reduced-motion` |
+| `volume` / `muted` | `1` / `false` | volume iniziale della musica (0..1) e mute |
 | `preserveDrawingBuffer` | `false` | serve solo per catturare frame con `toDataURL` |
 | `onReady` / `onError` / `onQualityChange` | — | callback |
 
 `pause()` conserva la posizione (con l'audio attivo, quella del clock audio); `play()` riprende da lì.
-In loop il tempo (video e audio) è modulo durata. `dispose()` libera programmi, FBO, listener,
+`stop()` mette in pausa e torna all'inizio (a schermo resta il primo frame). `setLoop(on)` attiva o
+disattiva il loop continuo anche durante la riproduzione (l'audio riparte dalla stessa posizione);
+`loop` e `ended` dicono lo stato. In loop il tempo (video e audio) è modulo durata; senza loop la demo
+si ferma alla fine e `play()` riparte da capo. `seek(t)` in pausa ridisegna subito il frame.
+`volume` (0..1) e `muted` si leggono e si impostano anche durante la riproduzione (rampa di 15 ms, niente
+click); `hasAudio` dice se la demo ha una colonna sonora.
+
+La pagina `.html` del bundle ha una barra di controlli (Start/Pausa, Stop, Loop on/off, posizione
+cliccabile, tempo e, se c'è musica, mute e volume salvati in `localStorage`) che si nasconde mentre la
+demo va e ricompare muovendo il mouse; tasti: spazio, S (stop), L (loop), M (mute), frecce su/giù
+(volume ±10%). Il canvas occupa la finestra e la segue quando viene ridimensionata; le scene retro, a risoluzione interna
+fissa, mantengono le proporzioni con bande nere invece di essere stirate. `dispose()` libera
+programmi, FBO, listener,
 `ResizeObserver` e audio (chiude l'`AudioContext` solo se l'ha creato il player).
 
 ## Embed 8bit stile sito (zero banda)
@@ -71,7 +84,7 @@ Per mostrarlo nel tuo sito copia solo due file: `demogen-player.esm.js` e il
 
 | Export | Note |
 | --- | --- |
-| `Player` | `new Player(canvas, payload, opts)`; `load/play/pause/seek/dispose`, `isPlaying`, `currentTime()`, `gl`, `durationS` |
+| `Player` | `new Player(canvas, payload, opts)`; `load/play/pause/stop/seek/setLoop/dispose`, `isPlaying`, `loop`, `ended`, `volume`, `muted`, `hasAudio`, `currentTime()`, `gl`, `durationS` |
 | `DemogenPlayerElement` | custom element `<demogen-player>` (auto-registrato se c'è DOM) |
 | `parsePayload` / `textToUniform` / `textByteLength` | validazione payload `.demo` (max 1 MB, bpm/bars > 0); testo scroller in byte UTF-8 (max 256) |
 | `PlaybackClock` | clock puro play/pause/seek/loop (usato dal player, testabile senza DOM) |

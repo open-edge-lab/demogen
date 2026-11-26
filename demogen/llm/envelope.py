@@ -24,13 +24,13 @@ class Envelope:
 
     def json(self) -> dict:
         if self.json_text is None:
-            raise EnvelopeError("Nessun blocco ```json nella risposta")
+            raise EnvelopeError("No ```json block in the response")
         try:
             data = json.loads(self.json_text)
         except json.JSONDecodeError as e:
-            raise EnvelopeError(f"blocco ```json non valido: {e}") from e
+            raise EnvelopeError(f"invalid ```json block: {e}") from e
         if not isinstance(data, dict):
-            raise EnvelopeError("il blocco ```json deve essere un oggetto")
+            raise EnvelopeError("the ```json block must be an object")
         return data
 
     def glsl(self, i: int = 0) -> str:
@@ -42,7 +42,7 @@ class Envelope:
                 for body in self.other_blocks.get(lang, []):
                     if "mainImage" in body:
                         return body
-        raise EnvelopeError(f"Nessun blocco ```glsl #{i} nella risposta")
+        raise EnvelopeError(f"No ```glsl block #{i} in the response")
 
 
 def parse_envelope(text: str) -> Envelope:

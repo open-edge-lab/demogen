@@ -53,7 +53,7 @@ class Project:
         root = self.path.resolve()
         p = (root / rel).resolve()
         if not p.is_relative_to(root):
-            raise ValueError(f"path fuori dal progetto: {rel!r}")
+            raise ValueError(f"path outside the project: {rel!r}")
         return p
 
     def exists(self, rel: str) -> bool:

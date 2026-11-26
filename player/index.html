@@ -12,7 +12,7 @@
 </head>
 <body>
   <canvas id="c"></canvas>
-  <div id="hud">caricamento…</div>
+  <div id="hud">loading…</div>
   <script src="dist/demogen-player.min.js"></script>
   <script>
     const params = new URLSearchParams(location.search);
@@ -70,7 +70,7 @@
     boot().catch((e) => {
       const msg = String((e && e.message) || e);
       window.__demogen_error = msg; // `demogen play` riporta l'errore invece di andare in timeout
-      document.getElementById("hud").textContent = "ERRORE: " + msg;
+      document.getElementById("hud").textContent = "ERROR: " + msg;
     });
   </script>
 </body>
