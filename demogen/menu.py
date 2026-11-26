@@ -457,6 +457,7 @@ def do_generate(ui: Ui, fake: bool = False) -> bool:
     note("BPM = beats per minute, the tempo of the music: kicks, flashes, pulses and scene cuts follow it")
     note("(90 slow, 120-128 house/techno, 170+ drum'n'bass)")
     bpm = ui.number("BPM", d_bpm, 60, 200)
+    note("style: modern = full resolution; retro = 320x180 pixels with a 16-color palette. It applies to every scene")
     prof = ui.choice("style", ["modern", "retro"], "modern")
     note("loop: auto = loops forever if the prompt asks for it (\"seamless loop\"), otherwise plays once")
     loop = ui.choice("loop at the end", ["auto", "yes", "no"], "auto")
@@ -581,6 +582,21 @@ def do_play_main(ui: Ui) -> bool:
     title("Main demo in realtime (examples/timeline.json)")
     note("a browser window opens: close it to come back to the menu")
     return run_cli(["play", "examples/timeline.json", "--gpu", "auto"])
+
+
+CATS_PAGE = REPO / "examples" / "web" / "whisker-hunt.html"
+
+
+def do_cats(ui: Ui) -> bool:
+    title("Cat demo: whisker hunt (examples/web/whisker-hunt.html)")
+    note("pixel-art cats: wake up, a big cat idle, a hunt for a moth (crouch, tail wag, pounce, look up), fade out")
+    note("a standalone page: player and demo are inside the HTML, it opens in the browser even from file://")
+    if not CATS_PAGE.exists():
+        note(f"{rel(CATS_PAGE)} missing: rebuild it with the bundle entry on examples/whisker_hunt.timeline.json",
+             YELLOW)
+        return False
+    open_path(CATS_PAGE)
+    return True
 
 
 def do_play(ui: Ui) -> bool:
@@ -834,6 +850,7 @@ ENTRIES: list[Entry] = [
     Entry("report", "CPU", "MAIN", "Show a project's report", do_report),
     Entry("open", "GPU", "MAIN", "Open a project's demo in the browser", do_open),
     Entry("m1", "GPU", "EXAMPLES", "Main demo in realtime (examples/timeline.json)", do_play_main),
+    Entry("cats", "GPU", "EXAMPLES", "Cat demo: whisker hunt, in the browser", do_cats),
     Entry("play", "GPU", "EXAMPLES", "Play an example (timeline or shader)", do_play),
     Entry("inspect", "CPU+", "EXAMPLES", "Inspect an example: metrics, checks and sheets in out/", do_inspect),
     Entry("bundle", "CPU", "EXAMPLES", "Bundle an example (.demo + .html in out/)", do_bundle),

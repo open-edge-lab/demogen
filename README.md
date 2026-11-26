@@ -39,7 +39,7 @@ The whole app is in one menu styled like the generation panel (`demogen/menu.py`
 if missing and starts it; it works the same on Windows, macOS and Linux). At the top: venv and player
 status, today's and this month's LLM spending against the caps, the models of each role, the detected GPU
 and leftover processes. Entries: generate (real LLM or `--fake`, with music and a per-run spending cap),
-resume, revise, music, report, open; examples (main demo in realtime, play, inspect, bundle, web pages);
+resume, revise, music, report, open; examples (main demo in realtime, the cat demo, play, inspect, bundle, web pages);
 setup, doctor, LLM config, spending caps, tests, calibrate; show and close demogen processes. Each entry
 is tagged `[GPU]` (realtime rendering: choppy without a GPU), `[CPU]` (same speed with or without a GPU)
 or `[CPU+]` (runs on CPU alone; a GPU speeds up the checks). With `--action` the questions take their
@@ -86,6 +86,7 @@ uv run demogen generate "plasma 8s" --project projects/t --fake      # fake LLM,
 uv run demogen generate "..." --music "acid techno, four on the floor" # music driven by a prompt
 uv run demogen generate "..." --no-music --max-cost 0.5              # silent demo, per-run spending cap
 uv run demogen generate "..." --loop                                 # continuous loop (no flag: the prompt decides)
+uv run demogen generate "..." --profile retro                        # retro style (320x180, 16-color palette) for every scene
 uv run demogen music projects/tunnel --prompt "slow synthwave"       # (re)composes only the soundtrack
 uv run demogen resume projects/tunnel                                 # resumes without repeating the calls already made
 uv run demogen revise projects/tunnel --scene s2 --note "less fog, more contrast on the kick"
@@ -99,7 +100,8 @@ Stop (back to the start), continuous Loop on/off, clickable position and time, a
 music, mute and volume, remembered for the next visit (keys: space, S, L, M, up/down arrows). The page
 follows the window: when it is resized the player adapts resolution and graphics, even while paused;
 retro scenes (fixed internal resolution) keep their proportions with black bars. `resume`, `revise` and
-`music` also accept `--fake`.
+`music` also accept `--fake`. The style (`--profile modern|retro`, default modern) is the user's choice and
+applies to every scene: the LLM cannot change it scene by scene.
 
 **Music.** After the shaders, the `composer` role writes the soundtrack (`mainAudio` in GLSL, on the
 demo's BPM), driven by `--music` or, when missing, by the demo prompt. It is listened to automatically:
@@ -130,7 +132,9 @@ uv run demogen calibrate --gpu hardware           # ms of the 4 example shaders 
 ```
 
 Ready-made examples in `examples/web/` open with a double click, for instance `whisker-hunt.html`
-(a pixel-art cat hunting a moth) and `penguin.html`; see `examples/web/README.md`.
+(pixel-art cats, one hunting a moth; also the `cats` menu entry) and `penguin.html`; see
+`examples/web/README.md`. `play` and `inspect` on a single shader of a timeline use that timeline's
+common code, text and style.
 
 ### Tests
 
@@ -181,7 +185,7 @@ Tutta l'app è in un menu nello stile del pannello di generazione (`demogen/menu
 e lo avvia; funziona uguale su Windows, macOS e Linux). In alto: stato di venv e player, spesa LLM di oggi e del
 mese sui tetti, modelli dei ruoli, GPU rilevata, processi rimasti aperti. Voci: generate (LLM reale o
 `--fake`, con musica e tetto di spesa del run), resume, revise, music, report, open; esempi (demo
-principale in tempo reale, play, inspect, bundle, pagine web); setup, doctor, config LLM, spending caps,
+principale in tempo reale, demo dei gatti, play, inspect, bundle, pagine web); setup, doctor, config LLM, spending caps,
 test, calibrate; mostra e chiudi i processi di demogen. Ogni voce ha l'etichetta `[GPU]` (rendering in
 tempo reale: senza GPU va a scatti), `[CPU]` (stessa velocità con o senza GPU) o `[CPU+]` (va anche
 solo su CPU; la GPU accelera i controlli). Con `--action` le domande prendono il default e le conferme
@@ -228,6 +232,7 @@ uv run demogen generate "plasma 8s" --project projects/t --fake      # LLM finto
 uv run demogen generate "..." --music "acid techno, cassa dritta"    # musica guidata da un prompt
 uv run demogen generate "..." --no-music --max-cost 0.5              # demo muta, tetto di spesa del run
 uv run demogen generate "..." --loop                                 # loop continuo (senza flag: lo decide il prompt)
+uv run demogen generate "..." --profile retro                        # stile retro (320x180, palette a 16 colori) per tutte le scene
 uv run demogen music projects/tunnel --prompt "synthwave lenta"      # (ri)compone solo la colonna sonora
 uv run demogen resume projects/tunnel                                 # riprende senza rifare le chiamate fatte
 uv run demogen revise projects/tunnel --scene s2 --note "meno nebbia, più contrasto sul kick"
@@ -241,7 +246,8 @@ Start/Pausa, Stop (torna all'inizio), Loop continuo on/off, posizione cliccabile
 demo ha musica mute e volume, ricordati alla prossima apertura (tasti: spazio, S, L, M, frecce
 su/giù). La pagina segue la finestra: ridimensionandola il player adatta risoluzione e grafica,
 anche in pausa; le scene retro (risoluzione interna fissa) mantengono le proporzioni con bande nere.
-`resume`, `revise` e `music` accettano anche `--fake`.
+`resume`, `revise` e `music` accettano anche `--fake`. Lo stile (`--profile modern|retro`, default modern) è
+la scelta dell'utente e vale per tutte le scene: l'LLM non può cambiarlo scena per scena.
 
 **Musica.** Dopo gli shader il ruolo `composer` scrive la colonna sonora (`mainAudio` in GLSL, sul
 BPM della demo), guidata da `--music` o, se manca, dal prompt della demo. Viene ascoltata in
@@ -272,7 +278,9 @@ uv run demogen calibrate --gpu hardware           # ms dei 4 shader di esempio (
 ```
 
 Esempi pronti in `examples/web/`, da aprire con un doppio click: per esempio `whisker-hunt.html`
-(un gatto in pixel art che caccia una falena) e `penguin.html`; vedi `examples/web/README.md`.
+(gatti in pixel art, uno caccia una falena; anche la voce `cats` del menu) e `penguin.html`; vedi
+`examples/web/README.md`. `play` e `inspect` su un singolo shader di una timeline usano common, testo e
+stile di quella timeline.
 
 ### Test
 

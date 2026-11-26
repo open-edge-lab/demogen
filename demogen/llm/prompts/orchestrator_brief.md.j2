@@ -12,8 +12,8 @@ Produce a DemoSpec JSON with:
 - A subject shown in several scenes (character, sprite, logo, object) must be described identically in each of them: same shape, size on screen, colors and position conventions.
 - timeline: bpm, beats_per_bar=4, scenes contiguous: each {id, start_bar, bars, transition_in: cut|crossfade|flash|fade_black, transition_bars}
 - duration_s MUST equal total_bars * beats_per_bar * 60 / bpm (max 120 s)
-- profile: "modern" (raymarch/SDF/fbm) or "retro" (320x180, palette, dithering, chiptune) — choose "retro" if the prompt suggests old-school/Amiga/C64 style, else "modern"
-- per scene: title, description (what is seen), motion (how it moves, tie to beat via uBeatPhase), techniques (from the library), camera, perf_tier (light|medium|heavy), optional profile override
+- profile: "{{ profile }}" for the whole demo and EVERY scene: it is the user's choice, do not set a per-scene profile. {% if profile == "retro" %}Retro = 320x180 internal pixels, a 16-color palette, dithering.{% else %}Modern = full resolution, linear color; an old-school or pixel-art look is drawn at full resolution (chunky pixels via pixUV, flat colors), not with the retro profile.{% endif %}
+- per scene: title, description (what is seen), motion (how it moves, tie to beat via uBeatPhase), techniques (from the library), camera, perf_tier (light|medium|heavy)
 - art_direction, palette_hint (hex colors), audio_brief, avoid (clichés to avoid), text (scroller text for retro, max 256 printable ASCII, or null)
 
 Return ONLY the DemoSpec JSON (schema: {{ schema_name }}). No prose.

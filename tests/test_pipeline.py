@@ -183,6 +183,18 @@ def test_s0_applica_i_flag_della_cli() -> None:
     assert spec.duration_s == pytest.approx(steps.timeline_duration(spec))
 
 
+def test_lo_stile_scelto_vale_per_tutte_le_scene() -> None:
+    # run reale: stile modern chiesto, il brief aveva reso la scena retro (320x180, palette, retino)
+    d = _fake_spec("p", 8.0, 120.0, "modern")
+    d["scenes"][0]["profile"] = "retro"
+    spec = steps.apply_request(DemoSpec.model_validate(d), "p", 120.0, "modern", None)
+    assert spec.profile == "modern" and all(s.profile is None for s in spec.scenes)
+    assert {steps.scene_profile(spec, s.id) for s in spec.scenes} == {"modern"}
+    d["scenes"][0]["profile"] = "modern"
+    spec = steps.apply_request(DemoSpec.model_validate(d), "p", 120.0, "retro", None)
+    assert {steps.scene_profile(spec, s.id) for s in spec.scenes} == {"retro"}
+
+
 def test_s0_tronca_la_timeline_a_120s() -> None:
     d = _fake_spec("p", 8.0, 120.0, "modern")
     d["timeline"]["scenes"] = [

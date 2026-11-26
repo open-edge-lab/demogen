@@ -77,6 +77,23 @@ def doctor() -> None:
             print(f"\n[{mode}] ERROR: {e}")
 
 
+def _owning_timeline(path: Path) -> tuple[Path, dict, dict] | None:
+    """Timeline vicina (cartella dello shader o quella sopra, più un livello di sottocartelle) che usa
+    questo shader come scena: (file, spec, scena). Ricerca limitata, niente rglob su cartelle grandi."""
+    target = path.resolve()
+    for d in dict.fromkeys((path.parent, path.parent.parent)):
+        for tl in sorted([*d.glob("*timeline*.json"), *d.glob("*/*timeline*.json")]):
+            try:
+                spec = json.loads(tl.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            for scene in spec.get("scenes", []) if isinstance(spec, dict) else []:
+                src = scene.get("src") if isinstance(scene, dict) else None
+                if isinstance(src, str) and (tl.parent / src).resolve() == target:
+                    return tl, spec, scene
+    return None
+
+
 def _payload_from_file(path: Path, bpm: float) -> dict:
     """Da .glsl (scena singola) o timeline.json (demo) → payload .demo."""
     from .bundle.build import build_payload
@@ -84,6 +101,14 @@ def _payload_from_file(path: Path, bpm: float) -> dict:
 
     if path.suffix == ".json":
         return build_payload(json.loads(path.read_text(encoding="utf-8")), path.parent)
+    # shader di una timeline (esempi): la sua scena da sola, in loop, con common, testo, stile e BPM
+    # della timeline (con il solo common.glsl generico gli shader del gatto e del pinguino non
+    # compilavano: funzioni dello style mancanti, uniform del testo non dichiarati)
+    owner = _owning_timeline(path)
+    if owner is not None:
+        tl, spec, scene = owner
+        one = {**scene, "start_bar": 0, "transition_in": "cut", "transition_bars": 0}
+        return build_payload({**spec, "loop": True, "scenes": [one]}, tl.parent)
     # shader singolo: common = libreria tree-shaked + style (common.glsl vicino, se c'è)
     src = path.read_text(encoding="utf-8")
     style = ""
@@ -542,7 +567,7 @@ def generate(
     prompt: str = typer.Argument(..., help="Text prompt of the demo"),
     duration: float = typer.Option(30.0, help="Duration in seconds"),
     bpm: float = typer.Option(128.0),
-    profile: str = typer.Option("modern", help="modern | retro"),
+    profile: str = typer.Option("modern", help="modern | retro: the style of every scene (the LLM cannot change it)"),
     loop: bool | None = typer.Option(None, "--loop/--no-loop",
                                      help="Loop forever at the end (default: as the prompt asks)"),
     project: Path | None = typer.Option(None, help="Project folder (default: projects/<date>_<slug>)"),

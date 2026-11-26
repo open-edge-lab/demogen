@@ -203,6 +203,8 @@ def truncate_timeline(spec: DemoSpec, max_s: float = MAX_DURATION_S) -> None:
 def apply_request(spec: DemoSpec, prompt: str, bpm: float, profile: str, loop: bool | None) -> DemoSpec:
     """I flag della CLI sono autoritativi: vincono sulle scelte dell'LLM.
 
+    Lo stile scelto dall'utente vale per TUTTE le scene: gli override di profilo per scena che l'LLM
+    mette nello spec vengono tolti (run reale: stile modern chiesto, scena resa retro dal brief).
     `loop=None` (nessun --loop/--no-loop): decide lo spec, cioè il prompt ("seamless loop"). Con un
     default False il loop chiesto nel prompt veniva sempre spento (run reale del gatto 8-bit)."""
     if profile not in ("modern", "retro"):
@@ -210,6 +212,8 @@ def apply_request(spec: DemoSpec, prompt: str, bpm: float, profile: str, loop: b
     spec.prompt = prompt
     spec.timeline.bpm = float(bpm)
     spec.profile = profile  # type: ignore[assignment]
+    for scene in spec.scenes:
+        scene.profile = None
     if loop is not None:
         spec.loop = bool(loop)
     truncate_timeline(spec)

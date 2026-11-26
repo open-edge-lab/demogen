@@ -47,7 +47,27 @@ def test_voci_numerate_in_ordine_e_nomi_unici() -> None:
     names = [e.name for e in menu.ENTRIES]
     assert len(set(names)) == len(names)
     assert all(e.hw in menu.HW_STYLE for e in menu.ENTRIES)
-    assert {"generate", "fake", "resume", "revise", "music", "budget", "config", "kill", "ps"} <= set(names)
+    assert {"generate", "fake", "resume", "revise", "music", "budget", "config", "kill", "ps", "cats"} <= set(names)
+    assert menu.find_entry("cats").section == "EXAMPLES"
+
+
+def test_la_demo_dei_gatti_si_apre_dal_menu(quiet, monkeypatch) -> None:
+    opened: list[Path] = []
+    monkeypatch.setattr(menu, "open_path", opened.append)
+    assert menu.run_entry(menu.find_entry("cats"), menu.Ui(interactive=False)) is True
+    assert opened == [REPO / "examples" / "web" / "whisker-hunt.html"] and opened[0].exists()
+
+
+def test_ogni_esempio_del_menu_compila(harness) -> None:
+    # run reale: dal menu (play/inspect) gli shader del gatto e del pinguino, avviati da soli, non
+    # compilavano: prendevano solo il common.glsl generico invece di common e testo della loro timeline
+    from demogen.cli import _payload_from_file
+
+    items = menu.examples(shaders=True)
+    assert REPO / "examples" / "whisker_hunt.timeline.json" in items
+    for f in items:
+        res = harness.load(_payload_from_file(f, 120.0))
+        assert res["ok"], f"{f.name}: " + "\n".join(res["errors"])[:800]
 
 
 def test_find_entry_per_numero_e_per_nome() -> None:

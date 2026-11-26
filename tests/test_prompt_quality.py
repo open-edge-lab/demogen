@@ -34,6 +34,18 @@ def test_il_brief_permette_una_sola_scena_per_una_sequenza_continua() -> None:
     assert "is ONE scene" in text and "described identically" in text
 
 
+def test_il_brief_non_sceglie_lo_stile() -> None:
+    for profile in ("modern", "retro"):
+        text = P.render("orchestrator_brief.md.j2", prompt="8-bit pixel art cat", duration_s=5, bpm=128,
+                        profile=profile, loop=None, schema_name="DemoSpec")
+        assert f'- profile: "{profile}" for the whole demo and EVERY scene' in text
+        assert "do not set a per-scene profile" in text
+        assert "choose \"retro\"" not in text and "optional profile override" not in text
+    modern = P.render("orchestrator_brief.md.j2", prompt="p", duration_s=5, bpm=128, profile="modern",
+                      loop=None, schema_name="DemoSpec")
+    assert "pixel-art look is drawn at full resolution" in modern
+
+
 def test_la_scena_vede_palette_altre_scene_e_funzioni_dello_style() -> None:
     spec = _spec()
     scene = spec.scenes[0]
