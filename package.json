@@ -13,6 +13,7 @@
     "menu": "node scripts/run.mts",
     "build": "npm run build --workspace player",
     "test": "npm test --workspace player",
-    "typecheck:scripts": "tsc -p scripts/tsconfig.json"
+    "typecheck:scripts": "tsc -p scripts/tsconfig.json",
+    "site": "node scripts/build-site.mts"
   }
 }

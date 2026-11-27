@@ -37,6 +37,7 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - Testi visibili all'utente (CLI, pannello, menu, report, pagina del player, messaggi all'LLM) in **inglese**; commenti, docstring e guide in italiano. Il `README.md` ha due sezioni, English sopra e Italiano sotto: ogni modifica va fatta in entrambe
 - Libreria web: il player è esportato da `player/src/index.ts` — build ESM/IIFE/types con `npm run build --workspace player`; esempi in `examples/web/` (`index.html` demo, `8bit.html` embed 8bit zero-banda); doc `docs/player-web-library.md`
 - Rigenera vettori timeline: `uv run python scripts/gen_vectors.py`
+- Sito delle demo (GitHub Pages, https://open-edge-lab.github.io/demogen/): `npm run build && npm run site` → `out/site/` (`scripts/build-site.mts`: galleria `index.html` + pagine di `examples/web/`, `index.html` diventa `m1.html`, `../../player/dist/` → `player/`); lo pubblica `.github/workflows/pages.yml` a ogni push su main (Source: GitHub Actions nelle impostazioni del repo). Una pagina nuova in `examples/web/` va aggiunta a `CARDS` con titolo e descrizione (altrimenti finisce in fondo col solo `<title>`). `player/dist/` non si committa
 
 ## Convenzioni
 

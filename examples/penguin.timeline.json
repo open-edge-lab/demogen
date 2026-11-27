@@ -4,7 +4,7 @@
   "beats_per_bar": 4,
   "loop": true,
   "common": "penguin_common.glsl",
-  "text": "PINGU THE PENGUIN SAYS HI! WADDLE WADDLE! NO FLASH, ONLY PASTEL! 0123456789",
+  "text": "PEPPE THE PENGUIN SAYS HI! WADDLE WADDLE! NO FLASH, ONLY PASTEL! 0123456789",
   "render": {
     "profile": "retro",
     "retro": { "internal_resolution": [320, 180], "upscale": "nearest" }

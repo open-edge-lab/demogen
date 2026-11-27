@@ -13,6 +13,9 @@
 - A vision LLM looks at the frames captured by the engine and iterates (critique → revision), after numeric gates (NaN, black frames, flicker, WCAG 2.3.1 flashes, perf, size).
 - GPU and LLM usage is confined to the generation phase. No video output in the first step.
 
+**Live demos: <https://open-edge-lab.github.io/demogen/>**, the pages of `examples/web/` running in your
+browser, nothing to install or build.
+
 See `docs/demogen-piano-implementazione.md` (plan v2), `docs/piano-esecuzione.md` (roadmap) and
 `docs/review-piano-correzione.md` (review and fixes); the design docs are in Italian.
 
@@ -174,6 +177,12 @@ intruder's face) and the slow return, 85 s seamless loop, flash gate at 2/s; its
 with `demogen still` at 8K shows the phosphor stripes and the zone plates that 1080p cannot resolve.
 `play` and `inspect` on a single shader of a timeline use that timeline's common code, text and style.
 
+The same pages are online at <https://open-edge-lab.github.io/demogen/>: on every push to `main` that
+touches them, `.github/workflows/pages.yml` builds the player, assembles the site with `npm run site`
+(`scripts/build-site.mts`: a gallery plus the pages, into `out/site/`) and publishes it on GitHub Pages.
+`player/dist/` stays out of the repository; to use the player in your own page without building it, load
+`https://open-edge-lab.github.io/demogen/player/demogen-player.min.js` (or `demogen-player.esm.js`).
+
 ![whisker hunt: an orange pixel-art kitten sitting on a dark teal background, with the player's control bar](docs/img/whisker-hunt.png)
 
 *`whisker-hunt.html`: retro profile (320×180, scaled up without smoothing) and the control bar of the
@@ -226,6 +235,9 @@ Generatore **offline** di demo realtime stile demoscene da un prompt testuale.
 - Il **motore di rendering creato da noi** (player WebGL2) renderizza la demo in realtime: su macOS sfrutta la GPU (ANGLE → Metal), con **fallback su CPU** (SwiftShader) quando la GPU non è disponibile.
 - Un LLM con visione analizza i frame catturati dal motore e itera (critica → revisione), dopo gate numerici (NaN, nero, flicker, flash WCAG 2.3.1, perf, dimensione).
 - Consumo GPU e LLM confinato alla fase di generazione. Nessun output video nel primo step.
+
+**Demo dal vivo: <https://open-edge-lab.github.io/demogen/>**, le pagine di `examples/web/` nel browser,
+senza installare né compilare niente.
 
 Vedi `docs/demogen-piano-implementazione.md` (piano v2), `docs/piano-esecuzione.md` (roadmap) e
 `docs/review-piano-correzione.md` (review e correzioni).
@@ -390,6 +402,12 @@ il volto dell'intruso) e il ritorno lento, loop di 85 s senza giunture, gate fla
 scena resa con `demogen still` in 8K mostra le strisce dei fosfori e i zone plate che a 1080p non si
 vedono. `play` e `inspect` su un singolo shader di una timeline usano common, testo e stile di quella
 timeline.
+
+Le stesse pagine sono online su <https://open-edge-lab.github.io/demogen/>: a ogni push su `main` che le
+tocca, `.github/workflows/pages.yml` compila il player, monta il sito con `npm run site`
+(`scripts/build-site.mts`: una galleria più le pagine, in `out/site/`) e lo pubblica su GitHub Pages.
+`player/dist/` resta fuori dal repository; per usare il player in una pagina tua senza compilarlo, carica
+`https://open-edge-lab.github.io/demogen/player/demogen-player.min.js` (o `demogen-player.esm.js`).
 
 ![whisker hunt: un gattino arancione in pixel art seduto su fondo verde petrolio scuro, con la barra dei controlli del player](docs/img/whisker-hunt.png)
 
