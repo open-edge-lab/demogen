@@ -41,8 +41,8 @@ The whole app is in one menu styled like the generation panel (`demogen/menu.py`
 if missing and starts it; it works the same on Windows, macOS and Linux). At the top: venv and player
 status, today's and this month's LLM spending against the caps, the models of each role, the detected GPU
 and leftover processes. Entries: generate (real LLM or `--fake`, with music and a per-run spending cap),
-resume, plan, revise, music, report, open, preview; examples (main demo in realtime, the cat demo, play, inspect, bundle,
-web pages);
+resume, plan, revise, music, report, open, preview; examples (main demo in realtime, the cat demo, play, inspect,
+still: one image up to 8K of a modern example, bundle, web pages);
 setup, doctor, LLM config, spending caps, tests, calibrate; show and close demogen processes. Each entry
 is tagged `[GPU]` (realtime rendering: choppy without a GPU), `[CPU]` (same speed with or without a GPU)
 or `[CPU+]` (runs on CPU alone; a GPU speeds up the checks). With `--action` the questions take their
@@ -255,7 +255,8 @@ Tutta l'app è in un menu nello stile del pannello di generazione (`demogen/menu
 e lo avvia; funziona uguale su Windows, macOS e Linux). In alto: stato di venv e player, spesa LLM di oggi e del
 mese sui tetti, modelli dei ruoli, GPU rilevata, processi rimasti aperti. Voci: generate (LLM reale o
 `--fake`, con musica e tetto di spesa del run), resume, plan, revise, music, report, open, preview; esempi (demo
-principale in tempo reale, demo dei gatti, play, inspect, bundle, pagine web); setup, doctor, config LLM, spending caps,
+principale in tempo reale, demo dei gatti, play, inspect, still: un'immagine fino all'8K di un esempio modern, bundle,
+pagine web); setup, doctor, config LLM, spending caps,
 test, calibrate; mostra e chiudi i processi di demogen. Ogni voce ha l'etichetta `[GPU]` (rendering in
 tempo reale: senza GPU va a scatti), `[CPU]` (stessa velocità con o senza GPU) o `[CPU+]` (va anche
 solo su CPU; la GPU accelera i controlli). Con `--action` le domande prendono il default e le conferme

@@ -760,6 +760,57 @@ def do_inspect(ui: Ui) -> bool:
     return ok
 
 
+STILL_SIZES = {"1080p": (1920, 1080), "4k": (3840, 2160), "8k": (7680, 4320)}
+
+
+def still_examples() -> list[Path]:
+    """Esempi che si possono rendere come immagine: solo il profilo modern (il retro ha una risoluzione
+    interna fissa, `demogen still` lo rifiuta). Per uno shader conta il profilo della sua scena."""
+    import json
+
+    from .engine import owning_timeline
+
+    out: list[Path] = []
+    for f in examples(shaders=True):
+        if f.suffix == ".json":
+            render = json.loads(f.read_text(encoding="utf-8")).get("render") or {}
+            profile = render.get("profile", "modern")
+        else:
+            owner = owning_timeline(f)
+            render = (owner[1].get("render") or {}) if owner else {}
+            profile = render.get("profile", "modern")
+            if owner:
+                profile = (render.get("overrides") or {}).get(owner[2].get("id"), profile)
+        if profile != "retro":
+            out.append(f)
+    return out
+
+
+def do_still(ui: Ui) -> bool:
+    title("Still: one high-resolution image of an example (tiles + sub-pixel samples) in out/")
+    f = ui.pick("Example (modern profile only):", still_examples(), lambda x: rel(Path(x)))
+    if f is None:
+        return False
+    from .engine import payload_from_file
+
+    duration = float(payload_from_file(Path(f))["meta"]["duration_s"])
+    note(f"the demo lasts {duration:g} s: the image is the frame at the chosen time")
+    at = ui.number("time (s)", round(duration / 2, 2), 0.0, duration)
+    note("1080p is quick; 8K shows the fine detail (phosphors, rings, noise) that 1080p cannot resolve")
+    w, h = STILL_SIZES[ui.choice("size", list(STILL_SIZES), "4k")]
+    note("samples per pixel: smoother edges; 16 is plenty, 1 = the plain realtime frame")
+    spp = int(ui.number("samples", 16, 1, 256))
+    gpu = "hardware" if gpu_names() else "swiftshader"
+    if gpu == "swiftshader":
+        note("no GPU detected: rendering on CPU (SwiftShader), a large image can take minutes", YELLOW)
+    ok = run_cli(["still", rel(Path(f)), "--time", f"{at:g}", "--width", str(w), "--height", str(h),
+                  "--spp", str(spp), "--gpu", gpu, "--out", "out"])
+    png = newest(REPO / "out", "still_*.png")
+    if ok and png is not None and ui.confirm(f"Open {rel(png)}?", True):
+        open_path(png)
+    return ok
+
+
 def do_bundle(ui: Ui) -> bool:
     title("Bundle an example: .demo + standalone .html in out/")
     f = ui.pick("Example:", examples(), lambda x: rel(Path(x)))
@@ -936,7 +987,8 @@ def process_table(items: list[dict]) -> None:
     note(f"{len(items)} processes, {sum(p['mb'] for p in items)} MB in total", SOFT)
 
 
-MCP_TOOLS = ("guide", "glsl_library", "validate", "render", "inspect", "verify_math", "bundle")
+# gli strumenti di demogen/mcp_server.py (un test controlla che siano gli stessi)
+MCP_TOOLS = ("guide", "glsl_library", "validate", "render", "render_still", "inspect", "verify_math", "bundle")
 
 
 def do_mcp(ui: Ui) -> bool:
@@ -1008,6 +1060,7 @@ ENTRIES: list[Entry] = [
     Entry("horizon", "GPU", "EXAMPLES", "Website background: edge horizon, in the browser", do_horizon),
     Entry("play", "GPU", "EXAMPLES", "Play an example (timeline or shader)", do_play),
     Entry("inspect", "CPU+", "EXAMPLES", "Inspect an example: metrics, checks and sheets in out/", do_inspect),
+    Entry("still", "CPU+", "EXAMPLES", "Still: a high-resolution image of an example (up to 8K) in out/", do_still),
     Entry("bundle", "CPU", "EXAMPLES", "Bundle an example (.demo + .html in out/)", do_bundle),
     Entry("web", "GPU", "EXAMPLES", "Web examples of the player (examples/web)", do_web),
     Entry("setup", "CPU", "SETUP & TESTS", "Setup (Chromium, npm install, player build)", do_setup),

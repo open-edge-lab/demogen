@@ -80,6 +80,47 @@ def test_ogni_esempio_del_menu_compila(harness) -> None:
         assert res["ok"], f"{f.name}: " + "\n".join(res["errors"])[:800]
 
 
+def test_still_solo_esempi_modern_e_argomenti_della_cli(quiet, calls, monkeypatch) -> None:
+    items = menu.still_examples()
+    names = {p.name for p in items}
+    assert "dead_channel.timeline.json" in names and "edge_horizon.glsl" in names
+    # il retro ha una risoluzione interna fissa: niente immagini (timeline e shader delle sue scene)
+    assert not names & {"penguin.timeline.json", "whisker_hunt.timeline.json", "audio_chip.timeline.json",
+                        "penguin_walk.glsl", "whisker_hunt.glsl", "plasma_retro.glsl"}
+    monkeypatch.setattr(menu, "newest", lambda *a, **k: None)
+    e = menu.find_entry("still")
+    assert e.section == "EXAMPLES" and e.key == str(int(menu.find_entry("inspect").key) + 1)
+    assert menu.run_entry(e, menu.Ui(interactive=False)) is True
+    from demogen.engine import payload_from_file
+
+    first = items[0]
+    half = payload_from_file(first)["meta"]["duration_s"] / 2   # default: il centro della demo
+    args = calls[-1]
+    assert args[:2] == ["still", menu.rel(first)] and args[-2:] == ["--out", "out"]
+    assert args[args.index("--width") + 1:args.index("--width") + 4] == ["3840", "--height", "2160"]
+    assert args[args.index("--spp") + 1] == "16" and args[args.index("--gpu") + 1] == "hardware"
+    assert float(args[args.index("--time") + 1]) == pytest.approx(half, abs=0.01)
+
+
+def test_strumenti_mcp_del_menu_uguali_a_quelli_del_server(tmp_path) -> None:
+    import asyncio
+
+    from mcp import Client
+
+    from demogen.mcp_server import build_server
+
+    server, renderer = build_server(tmp_path, gpu="swiftshader")
+
+    async def names() -> set[str]:
+        async with Client(server) as c:
+            return {t.name for t in (await c.list_tools()).tools}
+
+    try:
+        assert set(menu.MCP_TOOLS) == asyncio.run(names())
+    finally:
+        renderer.close()
+
+
 def test_find_entry_per_numero_e_per_nome() -> None:
     assert menu.find_entry("1").name == "generate"
     assert menu.find_entry(" Music ").name == "music"
