@@ -20,11 +20,10 @@ npm run build --workspace player     # genera player/dist/ (esm + min.js + types
 
 ## Online
 
-Le pagine sono pubblicate su GitHub Pages: <https://open-edge-lab.github.io/demogen/> (galleria; la demo M1
-di `index.html` lì è `m1.html`). Il sito si monta con `npm run build && npm run site` in `out/site/`
+Le pagine si possono pubblicare su GitHub Pages come sito statico (galleria; la demo M1 di `index.html` lì
+è `m1.html`). Il sito si monta con `npm run build && npm run site` in `out/site/`
 (`scripts/build-site.mts`, che riscrive `../../player/dist/` in `player/`) e lo pubblica
-`.github/workflows/pages.yml`. Il player senza compilarlo:
-`https://open-edge-lab.github.io/demogen/player/demogen-player.min.js`.
+`.github/workflows/pages.yml`, per ora solo avviandolo a mano da Actions.
 
 ## File
 
