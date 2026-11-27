@@ -76,6 +76,20 @@ npm run build --workspace player     # genera player/dist/ (esm + min.js + types
   `<body>`, con le sezioni sopra semitrasparenti (sul sito: `bg-slate-900/50`, le altre trasparenti) e
   senza la griglia CSS, che ora disegna lo shader; si mette in pausa finché la hero copre lo schermo.
 
+- `dead-channel.html` — **"dead channel"**, pagina autonoma (player e payload dentro l'HTML): un
+  monoscopio anni '80 originale (canale "DEMOGEN TV", nessun marchio reale) su un tubo CRT curvo, che a
+  mezzanotte viene bucato da un hacker. Quattro scene a 90 BPM, loop di 85 s senza giunture: il monoscopio
+  (pulito nella prima metà: è anche l'immagine fissa), l'intrusione (blocchi corrotti, sincronia che salta,
+  quadro che scivola, INTRUSION/HACKED, dump esadecimali, il volto dell'entità a blocchi, spegnimento del
+  tubo), il segnale dirottato (città cyberpunk al neon sotto la pioggia, terminale che scorre, barra di
+  UPLINK fino a HACKED) e il ritorno in palette neon fino al monoscopio di partenza. Profilo modern, bloom
+  leggero, ~7,5 KB gzip, gate flash a 2/s (limite 3). Scanline, fosfori e zone plate svaniscono sotto i
+  2 pixel (`detailFade`): a 1080p niente moiré, in uno still 8K si vedono tutti.
+  Sorgenti: `examples/dead_channel.timeline.json` + `examples/dead_channel_common.glsl` +
+  `examples/shaders/dead_channel_*.glsl`; rigenerabile con
+  `uv run demogen bundle examples/dead_channel.timeline.json --out /tmp/x && cp /tmp/x/dead-channel.html examples/web/ && cp /tmp/x/dead-channel.demo examples/web/dead-channel.demo.json`;
+  immagine 8K: `uv run demogen still examples/dead_channel.timeline.json --time 2 --width 7680 --height 4320 --spp 16 --gpu hardware`
+
 ## API esportata (`@demogen/player`)
 
 | Export | Uso |

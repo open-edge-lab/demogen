@@ -168,8 +168,11 @@ Ready-made examples in `examples/web/` open with a double click, for instance `w
 as a blueprint, network pulses, 128 s seamless loop, paused off screen; also the `horizon` menu entry);
 see `examples/web/README.md`. Its companion `examples/edge_blueprint.timeline.json` is the background of
 the rest of the page: the technical-drawing dot grid with a "+" every 5 dots, breathing in slow waves
-(fixed behind the sections, 30 fps, 1.5 KB gzip). `play` and `inspect` on a single shader of a timeline
-use that timeline's common code, text and style.
+(fixed behind the sections, 30 fps, 1.5 KB gzip). `dead-channel.html` is an 80s test card on a CRT
+that gets hacked: block glitches and hex dumps, then a hijacked broadcast (neon city, a terminal, the
+intruder's face) and the slow return, 85 s seamless loop, flash gate at 2/s; its first scene rendered
+with `demogen still` at 8K shows the phosphor stripes and the zone plates that 1080p cannot resolve.
+`play` and `inspect` on a single shader of a timeline use that timeline's common code, text and style.
 
 ![whisker hunt: an orange pixel-art kitten sitting on a dark teal background, with the player's control bar](docs/img/whisker-hunt.png)
 
@@ -380,8 +383,12 @@ ghiacciato disegnato come un progetto, impulsi di rete, loop di 128 s senza giun
 schermo; anche la voce `horizon` del menu); vedi `examples/web/README.md`. La sua compagna
 `examples/edge_blueprint.timeline.json` è lo sfondo del resto della pagina: la griglia di puntini da
 disegno tecnico con un "+" ogni 5 puntini, che respira a onde lente (fissa dietro le sezioni, 30 fps,
-1,5 KB gzip). `play` e `inspect` su un singolo shader di una timeline usano common, testo e
-stile di quella timeline.
+1,5 KB gzip). `dead-channel.html` è un monoscopio anni '80 su un tubo CRT che viene bucato da un
+hacker: blocchi corrotti e dump esadecimali, poi la trasmissione dirottata (città al neon, un terminale,
+il volto dell'intruso) e il ritorno lento, loop di 85 s senza giunture, gate flash a 2/s; la sua prima
+scena resa con `demogen still` in 8K mostra le strisce dei fosfori e i zone plate che a 1080p non si
+vedono. `play` e `inspect` su un singolo shader di una timeline usano common, testo e stile di quella
+timeline.
 
 ![whisker hunt: un gattino arancione in pixel art seduto su fondo verde petrolio scuro, con la barra dei controlli del player](docs/img/whisker-hunt.png)
 
