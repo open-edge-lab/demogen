@@ -1,7 +1,8 @@
 // whisker hunt, scena 4 "dissolvenza": la scena s3 di "Whisker Idle" con il gatto dritto.
 // Nell'originale le celle crescevano verso il basso partendo da un pavimento in alto: gatto
 // capovolto, appeso alla sua ombra. Qui pavimento, ombra e celle usano fy = 179 - y (ribaltati):
-// il gatto sta in piedi sullo stesso pavimento delle scene del gattone. Colori e animazione originali.
+// il gatto sta in piedi sullo stesso pavimento di "idle" e "caccia". Colori e animazione originali;
+// lo stesso gatto, con le pose da caccia, è orangeCat in whisker_common.glsl.
 
 const vec3 PAL[16] = vec3[16](
     vec3(0.02, 0.02, 0.04),  // 0 contorno nero

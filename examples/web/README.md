@@ -37,9 +37,11 @@ npm run build --workspace player     # genera player/dist/ (esm + min.js + types
   `uv run demogen bundle examples/penguin.timeline.json --out /tmp/x && cp /tmp/x/penguin-walk.demo examples/web/penguin.demo.json`
 - `whisker-hunt.html` — **"whisker hunt"**, pagina autonoma (player e payload dentro l'HTML, controlli,
   si apre con doppio click o dalla voce `cats` del menu): rifacimento a mano della demo generata "Whisker Idle" con gli stessi colori.
-  Gattino che si sveglia, gattone seduto (ora intero nell'inquadratura), caccia a una falena (si
-  acquatta scodinzolando, dimena il sedere, salta in avanti, si rimette composto e la guarda volare
-  via in alto), dissolvenza finale; 8,75 s a 128 BPM, retro 320×180, gate flash verde, 0 blocker.
+  Gattino che si sveglia; il gatto arancione del finale (stesso disegno e stessa misura in tutte le
+  scene) seduto che vede arrivare una falena; la caccia (si acquatta scodinzolando, dimena il sedere,
+  salta in avanti, si rimette composto e la guarda volare via in alto, poi si siede dove lo trova la
+  dissolvenza); dissolvenza finale. Il gattone rosa della demo generata non c'è più. 8,75 s a 128 BPM,
+  retro 320×180, gate flash verde, 0 blocker.
   Sorgenti: `examples/whisker_hunt.timeline.json` + `examples/whisker_common.glsl` +
   `examples/shaders/whisker_*.glsl`; rigenerabile con
   `uv run demogen bundle examples/whisker_hunt.timeline.json --out /tmp/x && cp /tmp/x/whisker-hunt.html examples/web/ && cp /tmp/x/whisker-hunt.demo examples/web/whisker-hunt.demo.json`

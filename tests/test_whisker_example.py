@@ -1,8 +1,7 @@
-"""Esempio "whisker hunt" (examples/whisker_hunt.timeline.json): il gattone resta nell'inquadratura.
+"""Esempio "whisker hunt" (examples/whisker_hunt.timeline.json): gatto e falena restano nell'inquadratura.
 
-Nella demo generata da cui viene ("Whisker Idle") il gattone aveva celle di 8 pixel con i piedi a
-y = 112 e testa e orecchie uscivano dal bordo alto; nella caccia salta, quindi il controllo copre
-tutte le pose di idle e caccia.
+Nella caccia il gatto arancione salta ad arco e la falena vola via verso l'alto: il controllo copre
+tutti i fotogrammi di idle e caccia e vuole solo sfondo nelle righe più in alto.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from demogen.bundle.build import build_payload
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 
-def test_il_gattone_non_esce_dall_inquadratura(harness) -> None:
+def test_gatto_e_falena_restano_nell_inquadratura(harness) -> None:
     spec = json.loads((EXAMPLES / "whisker_hunt.timeline.json").read_text(encoding="utf-8"))
     res = harness.load(build_payload(spec, EXAMPLES, do_minify=True))
     assert res["ok"], "\n".join(res["errors"])[:1500]
@@ -27,4 +26,4 @@ def test_il_gattone_non_esce_dall_inquadratura(harness) -> None:
     for t, png in zip(times, harness.capture(times, 320, 180), strict=True):
         rgb = np.asarray(Image.open(io.BytesIO(png)).convert("RGB"), dtype=np.float32) / 255
         top = rgb[:10].mean(axis=-1)  # le 10 righe più in alto: solo sfondo verde acqua
-        assert top.min() > 0.1, f"t={t}: contorno del gatto nel bordo alto (luma {top.min():.3f})"
+        assert top.min() > 0.1, f"t={t}: gatto o falena nel bordo alto (luma {top.min():.3f})"

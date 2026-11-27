@@ -1,5 +1,7 @@
 # demogen
 
+![edge horizon: a single fragment shader rendered live in the browser by the demogen player](docs/img/edge-horizon.jpg)
+
 [English](#english) · [Italiano](#italiano)
 
 ## English
@@ -121,6 +123,11 @@ default: the best version so far, else the latest), also while the generation is
 the project. The 16 frames the critic saw are in `scenes/<id>/vN.probe/contact.png`. In the menu: Plan
 and Preview (which also offers to open the frame sheet).
 
+![Frame sheet: 16 frames of a demo on one image, each with its time and bar](docs/img/whisker-hunt-contact.png)
+
+*The frame sheet the critic judges: 16 frames spread over the demo, each with its time and bar (here
+`demogen inspect` on `examples/whisker_hunt.timeline.json`).*
+
 **Music.** After the shaders, the `composer` role writes the soundtrack (`mainAudio` in GLSL, on the
 demo's BPM), driven by `--music` or, when missing, by the demo prompt. It is listened to automatically:
 compilation, loudness, NaN, compute cost (≥ 10× realtime), strong hits on the rhythm grid, distortion,
@@ -154,13 +161,18 @@ uv run demogen calibrate --gpu hardware           # ms of the 4 example shaders 
 ```
 
 Ready-made examples in `examples/web/` open with a double click, for instance `whisker-hunt.html`
-(pixel-art cats, one hunting a moth; also the `cats` menu entry), `penguin.html` and
+(an orange pixel-art cat hunting a moth; also the `cats` menu entry), `penguin.html` and
 `edge-horizon.html` (a live shader as the background of a website hero: dotted grid, icy planet drawn
 as a blueprint, network pulses, 128 s seamless loop, paused off screen; also the `horizon` menu entry);
 see `examples/web/README.md`. Its companion `examples/edge_blueprint.timeline.json` is the background of
 the rest of the page: the technical-drawing dot grid with a "+" every 5 dots, breathing in slow waves
 (fixed behind the sections, 30 fps, 1.5 KB gzip). `play` and `inspect` on a single shader of a timeline
 use that timeline's common code, text and style.
+
+![whisker hunt: an orange pixel-art kitten sitting on a dark teal background, with the player's control bar](docs/img/whisker-hunt.png)
+
+*`whisker-hunt.html`: retro profile (320×180, scaled up without smoothing) and the control bar of the
+standalone page. The picture at the top is `edge-horizon.html` full screen.*
 
 ### MCP server: an external agent writes the demo
 
@@ -319,6 +331,11 @@ altrimenti l'ultima), anche mentre la generazione è in corso: legge soltanto il
 visti dal critico sono in `scenes/<id>/vN.probe/contact.png`. Nel menu: Plan e Preview (che propone anche
 di aprire il foglio dei fotogrammi).
 
+![Foglio dei fotogrammi: 16 fotogrammi di una demo in un'unica immagine, ciascuno con tempo e battuta](docs/img/whisker-hunt-contact.png)
+
+*Il foglio dei fotogrammi che il critico giudica: 16 fotogrammi distribuiti sulla demo, ciascuno con tempo e
+battuta (qui `demogen inspect` su `examples/whisker_hunt.timeline.json`).*
+
 **Musica.** Dopo gli shader il ruolo `composer` scrive la colonna sonora (`mainAudio` in GLSL, sul
 BPM della demo), guidata da `--music` o, se manca, dal prompt della demo. Viene ascoltata in
 automatico: compilazione, volume, NaN, costo di calcolo (≥ 10× il tempo reale), colpi forti sulla
@@ -352,7 +369,7 @@ uv run demogen calibrate --gpu hardware           # ms dei 4 shader di esempio (
 ```
 
 Esempi pronti in `examples/web/`, da aprire con un doppio click: per esempio `whisker-hunt.html`
-(gatti in pixel art, uno caccia una falena; anche la voce `cats` del menu), `penguin.html` e
+(un gatto arancione in pixel art caccia una falena; anche la voce `cats` del menu), `penguin.html` e
 `edge-horizon.html` (uno shader vivo come sfondo della hero di un sito: griglia di puntini, pianeta
 ghiacciato disegnato come un progetto, impulsi di rete, loop di 128 s senza giunture, in pausa fuori
 schermo; anche la voce `horizon` del menu); vedi `examples/web/README.md`. La sua compagna
@@ -360,6 +377,11 @@ schermo; anche la voce `horizon` del menu); vedi `examples/web/README.md`. La su
 disegno tecnico con un "+" ogni 5 puntini, che respira a onde lente (fissa dietro le sezioni, 30 fps,
 1,5 KB gzip). `play` e `inspect` su un singolo shader di una timeline usano common, testo e
 stile di quella timeline.
+
+![whisker hunt: un gattino arancione in pixel art seduto su fondo verde petrolio scuro, con la barra dei controlli del player](docs/img/whisker-hunt.png)
+
+*`whisker-hunt.html`: profilo retro (320×180, ingrandito senza sfumature) e la barra dei controlli della
+pagina autonoma. L'immagine in cima è `edge-horizon.html` a tutto schermo.*
 
 ### Server MCP: la demo la scrive un agente esterno
 

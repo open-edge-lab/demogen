@@ -706,7 +706,7 @@ CATS_PAGE = REPO / "examples" / "web" / "whisker-hunt.html"
 
 def do_cats(ui: Ui) -> bool:
     title("Cat demo: whisker hunt (examples/web/whisker-hunt.html)")
-    note("pixel-art cats: wake up, a big cat idle, a hunt for a moth (crouch, tail wag, pounce, look up), fade out")
+    note("an orange pixel-art cat: wake up, idle, a hunt for a moth (crouch, tail wag, pounce, look up), fade out")
     note("a standalone page: player and demo are inside the HTML, it opens in the browser even from file://")
     if not CATS_PAGE.exists():
         note(f"{rel(CATS_PAGE)} missing: rebuild it with the bundle entry on examples/whisker_hunt.timeline.json",

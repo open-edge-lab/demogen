@@ -1,8 +1,9 @@
-// Style della demo "whisker hunt": lo stesso della demo generata "Whisker Idle" (palette, sfondo,
-// finalize retro), più il gattone condiviso dalle scene "idle" e "caccia".
+// Style della demo "whisker hunt": palette, sfondo e finalize retro della demo generata "Whisker Idle",
+// più il gatto arancione (lo stesso della dissolvenza) e la falena delle scene "idle" e "caccia".
 // Viene concatenato DOPO la libreria tree-shaked nel `common` del payload.
 
 // Palette a 16 colori: i 5 colori della direzione artistica più le sfumature di riempimento.
+// Qui quantizza solo lo sfondo di "idle" e "caccia"; gatto e falena usano OC_PAL.
 const vec3 PALETTE[16] = vec3[16](
     vec3(0.063, 0.063, 0.078), // 0  #101014 contorno / quasi nero
     vec3(0.078, 0.204, 0.231), // 1  #14343B sfondo verde acqua scuro
@@ -34,99 +35,120 @@ vec3 finalize(vec3 col, vec2 uv) {
 #endif
 }
 
-// ---------------------------------------------------------------- gattone (scene "idle" e "caccia")
-// Sprite a celle in vista frontale. Celle con y verso l'alto, (0,0) = cella a terra sotto il centro
-// del corpo. Restituisce 0 vuoto, 1 nero, 2 pelo, 3 crema, 4 rosa (senza contorno: lo aggiunge
-// bigCatId guardando le celle vicine). Corpo, pancia, coda e colori sono quelli del gattone della
-// demo originale; la testa, che lì usciva dall'inquadratura, è disegnata da gatto (orecchie a
-// triangolo con l'interno rosa, naso e bocca) e appoggiata sul corpo.
-//   k       acquattamento a scatti: 0 seduto, 1 a metà, 2 a terra
-//   tail    alzata della coda in celle (scodinzolare = valori che cambiano a ogni fotogramma)
-//   hip     spostamento orizzontale di corpo e coda in celle (dimenare il sedere)
-//   look    spostamento delle pupille in celle (x verso destra, y verso l'alto)
-//   headUp  testa alzata di N celle (guarda in alto)
-//   flags   bit 0 orecchio destro piegato, bit 1 occhi chiusi, bit 2 zampe sospese (in volo)
-const int BC_EAR = 1;
-const int BC_BLINK = 2;
-const int BC_AIR = 4;
+// ---------------------------------------------------------------- sfondo di "idle" e "caccia"
+const vec3 WH_TEAL_D = vec3(0.145, 0.310, 0.314);
+const vec3 WH_TEAL_L = vec3(0.220, 0.451, 0.455);
+const vec3 WH_BLACK = vec3(0.031, 0.027, 0.039);
+const float WH_FLOOR = 28.0; // y dei piedi, la stessa della dissolvenza (sotto c'è la linea del pavimento)
 
-// mezza larghezza della testa per riga, dal mento (dy = -5) alla fronte (dy = +5)
-const int BC_HEAD[11] = int[11](2, 4, 5, 5, 5, 5, 5, 5, 5, 4, 3);
-
-int bigCatFill(ivec2 c, int k, int tail, int hip, ivec2 look, int headUp, int flags) {
-    int id = 0;
-    ivec2 b = c - ivec2(hip, 0);
-    int bodyTop = 6 - k;
-    int bodyHalf = 6 + k / 2;
-    // coda: catena di celle che sale dal fianco destro
-    if (b.x >= bodyHalf + 1 && b.x <= bodyHalf + 6) {
-        int i = b.x - bodyHalf - 1;
-        if (b.y == 3 - k + i / 2 + tail) id = 2;
-    }
-    // corpo: largo sulle anche, più stretto verso le spalle, angoli smussati
-    if (b.y >= 0 && b.y <= bodyTop) {
-        int hw = bodyHalf - max(0, b.y - 2) / 2;
-        if (abs(b.x) <= hw) id = (abs(b.x) == hw && (b.y == 0 || b.y == bodyTop)) ? 0 : 2;
-    }
-    // pancia crema e, in basso, le due zampe anteriori separate da una riga nera
-    if (abs(b.x) <= 3 && b.y >= 0 && b.y <= 3 - k) id = (b.y == 0 && b.x == 0) ? 1 : 3;
-    // zampe sospese durante il salto
-    if ((flags & BC_AIR) != 0 && b.y == -1 && (abs(b.x) == 2 || abs(b.x) == 3)) id = 2;
-    // testa appoggiata sul corpo
-    int hy = 11 - 2 * k + headUp;
-    int dy = c.y - hy;
-    if (dy >= -5 && dy <= 5 && abs(c.x) <= BC_HEAD[dy + 5]) id = 2;
-    // orecchie a triangolo sugli angoli della testa (più aperte quando è a terra); il guizzo
-    // piega la destra verso l'esterno
-    int ey = dy - 5; // 0..2 sopra la fronte
-    int ax = abs(c.x);
-    bool right = c.x > 0;
-    int lean = (k == 2 || ((flags & BC_EAR) != 0 && right)) ? 1 : 0;
-    if (ey >= 0 && ey <= 2 && ax >= 2 + ey + lean && ax <= 5 + lean) id = 2;
-    // interno rosa delle orecchie
-    if ((ey == 0 && (ax == 3 + lean || ax == 4 + lean)) || (ey == 1 && ax == 4 + lean)) id = 4;
-    // occhi (chiusi = pelo); muso crema con il naso nero (un naso rosa, quantizzato, sparirebbe
-    // nel pelo e due bocche nere sembrerebbero un grugno)
-    if (dy == 1 + look.y && abs(c.x - look.x) == 2) id = (flags & BC_BLINK) != 0 ? 2 : 1;
-    if (ax <= 1 && (dy == -1 || dy == -2)) id = (c.x == 0 && dy == -1) ? 1 : 3;
-    return id;
-}
-
-// Id della cella con il contorno nero: una cella piena che tocca una vuota diventa nera.
-int bigCatId(ivec2 c, int k, int tail, int hip, ivec2 look, int headUp, int flags) {
-    int id = bigCatFill(c, k, tail, hip, look, headUp, flags);
-    if (id == 0) return 0;
-    if (bigCatFill(c + ivec2(1, 0), k, tail, hip, look, headUp, flags) == 0 ||
-        bigCatFill(c - ivec2(1, 0), k, tail, hip, look, headUp, flags) == 0 ||
-        bigCatFill(c + ivec2(0, 1), k, tail, hip, look, headUp, flags) == 0 ||
-        bigCatFill(c - ivec2(0, 1), k, tail, hip, look, headUp, flags) == 0) return 1;
-    return id;
-}
-
-// Colori del gattone e del suo sfondo (gli stessi della scena originale, quantizzati da finalize).
-const vec3 BC_TEAL_D = vec3(0.145, 0.310, 0.314);
-const vec3 BC_TEAL_L = vec3(0.220, 0.451, 0.455);
-const vec3 BC_BLACK = vec3(0.031, 0.027, 0.039);
-const vec3 BC_FUR = vec3(0.878, 0.522, 0.125);
-const vec3 BC_CREAM = vec3(0.976, 0.902, 0.729);
-// il rosa del naso originale (0.949, 0.443, 0.545) finiva sulla stessa voce della palette del pelo:
-// qui il rosa #F2A6B3 della palette, che resta distinto (interno delle orecchie)
-const vec3 BC_PINK = vec3(0.949, 0.651, 0.702);
-const float BC_CELL = 7.0;   // lato di una cella in pixel interni: il gattone seduto è alto 133 px
-const float BC_FLOOR = 28.0; // y dei piedi (il pavimento è la riga appena sotto)
-
-// Sfondo delle scene del gattone: verde acqua con sfumatura verticale a retino e linea del pavimento.
-vec3 bigCatBackground(vec2 px, vec2 res) {
+// Verde acqua con sfumatura verticale a retino e linea del pavimento.
+vec3 floorBackground(vec2 px, vec2 res) {
     float v = clamp((px.y / res.y - 0.12) / 0.76, 0.0, 1.0);
-    vec3 col = mix(BC_TEAL_D, BC_TEAL_L, step(bayer4(px), v));
-    if (px.y >= BC_FLOOR - 3.0 && px.y < BC_FLOOR - 1.0) col = BC_BLACK * 0.7;
+    vec3 col = mix(WH_TEAL_D, WH_TEAL_L, step(bayer4(px), v));
+    if (px.y >= WH_FLOOR - 3.0 && px.y < WH_FLOOR - 1.0) col = WH_BLACK * 0.7;
     return col;
 }
 
-vec3 bigCatColor(int id, vec3 col) {
-    if (id == 1) return BC_BLACK;
-    if (id == 2) return BC_FUR;
-    if (id == 3) return BC_CREAM;
-    if (id == 4) return BC_PINK;
-    return col;
+// ---------------------------------------------------------------- gatto arancione
+// Colori di whisker_fade.glsl. La palette comune non ha l'arancione (lo porterebbe sul rosa), quindi
+// gatto e falena si quantizzano su questa e lo sfondo su PALETTE (vedi whiskerFinalize).
+const vec3 OC_PAL[16] = vec3[16](
+    vec3(0.02, 0.02, 0.04),  // 0 contorno nero
+    vec3(0.85, 0.45, 0.12),  // 1 pelo arancione
+    vec3(0.95, 0.85, 0.62),  // 2 crema
+    vec3(0.16, 0.07, 0.05),  // 3 marrone scuro (occhi e strisce)
+    vec3(0.02, 0.02, 0.04),  // 4..15 riempitivo (n = 8 tiene basso il retino della quantizzazione)
+    vec3(0.02, 0.02, 0.04),
+    vec3(0.02, 0.02, 0.04),
+    vec3(0.02, 0.02, 0.04),
+    vec3(0.02, 0.02, 0.04),
+    vec3(0.02, 0.02, 0.04),
+    vec3(0.02, 0.02, 0.04),
+    vec3(0.02, 0.02, 0.04),
+    vec3(0.02, 0.02, 0.04),
+    vec3(0.02, 0.02, 0.04),
+    vec3(0.02, 0.02, 0.04),
+    vec3(0.02, 0.02, 0.04)
+);
+
+const float OC_CELL = 4.0;  // celle di 4 pixel come nella dissolvenza: da seduto è alto 56 px
+const int OC_EAR = 1;       // l'orecchio destro scatta verso l'esterno
+const int OC_AIR = 2;       // zampe sospese (in volo)
+const int OC_BLINK = 4;     // occhi chiusi
+
+// Cella dello sprite, x a destra e y in alto, (0,0) = cella a terra: 0 vuoto, 1 pelo, 2 crema,
+// 3 marrone. Da seduto è il gatto di whisker_fade.glsl cella per cella.
+//   k     acquattamento: 0 seduto, 1 a metà, 2 a terra (corpo basso e anche allargate)
+//   tb    altezza della base della coda in celle
+//   hip   spostamento orizzontale di corpo e coda (dimenare il sedere); la testa resta ferma
+//   look  spostamento degli occhi (x verso destra, y verso l'alto)
+int orangeCat(ivec2 c, int k, int tb, int hip, ivec2 look, int flags) {
+    const int TOP[3] = int[3](4, 3, 1); // ultima riga del corpo
+    int top = TOP[k];
+    int wide = k == 2 ? 1 : 0;
+    ivec2 b = c - ivec2(hip, 0);
+    int id = 0;
+    // corpo (la riga a terra è più stretta) e coda: 5 celle che salgono verso destra
+    bool fur = b.y >= 0 && b.y <= top && b.x >= -5 - wide && b.x <= 4 + wide &&
+               !(b.y == 0 && (b.x < -3 - wide || b.x > 2 + wide));
+    for (int i = 0; i < 5; i++) {
+        if (b.x == 4 + wide + i && b.y == tb + (i * i) / 4) fur = true;
+    }
+    // colori per posizione, come nella dissolvenza: petto crema, strisce anche sulla coda
+    if (fur) {
+        bool band = b.y >= 1 && b.y <= top;
+        if (band && b.x >= -1 && b.x <= 2) id = 2;
+        else if (band && (b.x + 6) % 3 == 1) id = 3;
+        else id = 1;
+    }
+    // zampe anteriori sospese durante il salto
+    if ((flags & OC_AIR) != 0 && c.y == -1 && (c.x == -3 || c.x == -2 || c.x == 1 || c.x == 2)) id = 1;
+    // testa appoggiata sul corpo, con occhi (chiusi = pelo) e muso
+    int hb = top + 1;
+    if (c.y >= hb && c.y <= hb + 5 && c.x >= -4 && c.x <= 3) {
+        id = 1;
+        if (c.y == hb + 3 + look.y && (c.x == -2 + look.x || c.x == 1 + look.x)) id = (flags & OC_BLINK) != 0 ? 1 : 3;
+        else if (c.x == 0 && c.y == hb + 2) id = 2;
+    }
+    // orecchie: a terra si aprono verso l'esterno, il guizzo apre solo la destra
+    int ey = c.y - hb - 6;
+    int tipL = k == 2 ? -4 : -3;
+    int tipR = (k == 2 || (flags & OC_EAR) != 0) ? 2 : 1;
+    if (ey == 0 && (c.x == -4 || c.x == -3 || c.x == 1 || c.x == 2)) id = 1;
+    if (ey == 1 && (c.x == tipL || c.x == tipR)) id = 1;
+    return id;
+}
+
+// Indice in OC_PAL del pixel px per il gatto con i piedi in o, oppure -1 (sfondo). Le celle vuote che
+// toccano il pelo fanno il contorno nero; a terra niente contorno sotto i piedi, come nella
+// dissolvenza. Fuori dal riquadro dello sprite (contorno compreso), cioè quasi ovunque, non lo si
+// interroga affatto.
+int orangeCatPixel(vec2 px, vec2 o, int k, int tb, int hip, ivec2 look, int flags) {
+    ivec2 g = ivec2(floor((px - o) / OC_CELL));
+    if (g.x < -8 || g.x > 11 || g.y < -2 || g.y > 14) return -1;
+    int id = orangeCat(g, k, tb, hip, look, flags);
+    if (id > 0) return id;
+    if (g.y < 0 && (flags & OC_AIR) == 0) return -1;
+    if (orangeCat(g + ivec2(1, 0), k, tb, hip, look, flags) > 0 ||
+        orangeCat(g - ivec2(1, 0), k, tb, hip, look, flags) > 0 ||
+        orangeCat(g + ivec2(0, 1), k, tb, hip, look, flags) > 0 ||
+        orangeCat(g - ivec2(0, 1), k, tb, hip, look, flags) > 0) return 0;
+    return -1;
+}
+
+// ---------------------------------------------------------------- falena
+// Falena crema di 6x4 pixel con il corpo 2x2 in pos; le ali battono a ogni fotogramma.
+bool mothAt(vec2 px, vec2 pos, bool wingsUp) {
+    ivec2 q = ivec2(floor(px)) - ivec2(pos);
+    bool body = q.x >= 0 && q.x <= 1 && q.y >= 0 && q.y <= 1;
+    bool wing = (q.x == -2 || q.x == -1 || q.x == 2 || q.x == 3) &&
+                (wingsUp ? (q.y == 1 || q.y == 2) : (q.y == -1 || q.y == 0));
+    return body || wing;
+}
+
+// Pixel finale: idx >= 0 è un colore di OC_PAL (gatto o falena), -1 lo sfondo bg su PALETTE.
+// Gatto e sfondo passano dalla stessa vignettatura retro.
+vec3 whiskerFinalize(vec3 bg, int idx, vec2 fragCoord, vec2 res) {
+    vec2 uv = fragCoord / res;
+    return idx >= 0 ? retroFinalize(OC_PAL[idx], uv, fragCoord, OC_PAL, 8) : finalize(bg, uv);
 }
