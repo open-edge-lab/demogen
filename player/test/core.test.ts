@@ -38,7 +38,7 @@ describe("buildFragment", () => {
     expect(frag.indexOf("H")).toBeLessThan(frag.indexOf("C"));
     expect(frag.indexOf("C")).toBeLessThan(frag.indexOf("void main()"));
     expect(frag.indexOf("void main()")).toBeLessThan(frag.indexOf("void mainImage(out vec4 c"));
-    expect(frag).toContain("mainImage(demogen_FragColor, gl_FragCoord.xy)");
+    expect(frag).toContain("mainImage(demogen_FragColor, gl_FragCoord.xy + uJitter)");
   });
 });
 

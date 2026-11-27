@@ -6,7 +6,7 @@ import { AudioEngine, buildAudioHeader, buildAudioFragment } from "./audio";
 import { PlaybackClock } from "./clock";
 import { Compositor, RenderEnv } from "./compositor";
 import { DemoPayload, parsePayload, textByteLength, textToUniform } from "./format";
-import { createGL, DemogenInfo, isSoftwareRenderer, rendererInfo } from "./gl";
+import { createGL, DemogenInfo, FBO, isSoftwareRenderer, rendererInfo } from "./gl";
 import { BloomParams, Post } from "./post";
 import { buildHeader, CompiledProgram, compileAll, detectMap, SceneDef } from "./programs";
 import { DEFAULT_LIMITS, QualityController, QualityState } from "./quality";
@@ -337,6 +337,14 @@ export class Player {
     if (bloom) this.post.apply(fbo.tex, vw, vh, bloom, vx, vy);
     else this.compositor.blit(fbo.tex, vw, vh, vx, vy);
     return q;
+  }
+
+  /** Composizione a tempo t in un FBO w×h, senza blit né bloom: immagini fisse a tile
+   *  (`res` = immagine intera, `jitter` = angolo del tile + offset sub-pixel). */
+  composeAt(t: number, w: number, h: number, q: QualityState, res?: [number, number],
+            jitter?: [number, number]): FBO {
+    if (!this.compositor) throw new Error("load() before composeAt");
+    return this.compositor.render({ ...this.makeEnv(t, w, h, q), res, jitter }, this.progs).fbo;
   }
 
   /** Adegua il buffer del canvas alla sua dimensione CSS × devicePixelRatio (max 2). */

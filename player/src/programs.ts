@@ -58,9 +58,10 @@ ${
 `;
 }
 
+// uJitter sposta fragCoord: 0 in realtime; nelle immagini fisse posizione del tile + jitter sub-pixel
 const MAIN = `
 out vec4 demogen_FragColor;
-void main() { mainImage(demogen_FragColor, gl_FragCoord.xy); }
+void main() { mainImage(demogen_FragColor, gl_FragCoord.xy + uJitter); }
 `;
 
 export function buildFragment(header: string, common: string, sceneSrc: string): string {

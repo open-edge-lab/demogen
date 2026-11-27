@@ -184,6 +184,64 @@ def probe(
 
 
 @app.command()
+def still(
+    file: Path = typer.Argument(..., exists=True, readable=True, help=".glsl | timeline.json | .demo"),
+    at: float = typer.Option(None, "--time", help="Time in seconds (default: middle of the demo)"),
+    width: int = typer.Option(3840),
+    height: int = typer.Option(2160),
+    spp: int = typer.Option(16, help="Sub-pixel samples per pixel (anti-aliasing)"),
+    tile: int = typer.Option(1024, help="Tile size in pixels: each sample of a tile is one short GPU draw"),
+    quality: float = typer.Option(1.0, help="uQuality: 1 = full realtime quality, above 1 qSteps/qOctaves grow"),
+    gpu: str = typer.Option("swiftshader", help="hardware | swiftshader"),
+    out: Path = typer.Option(Path("out"), help="Output folder"),
+) -> None:
+    """Render a single high-resolution image (tiles + sub-pixel samples) and save it as PNG."""
+    from PIL import Image
+
+    from .browser.harness import Harness
+    from .engine import CompileFailed
+    from .still import render_still, validate_still_args
+
+    try:
+        validate_still_args(width, height, spp, tile, quality)
+    except ValueError as e:
+        print(f"Error: {e}")
+        raise typer.Exit(2) from None
+    payload = payload_from_file(file, 120.0)
+    t = float(payload["meta"]["duration_s"]) / 2 if at is None else at
+
+    def progress(i: int, n: int, st) -> None:
+        print(f"  tile {i + 1}/{n} {st.w}x{st.h}: {st.ms_total:.0f} ms "
+              f"({st.ms_total / spp:.2f} ms/sample, slowest {st.ms_max:.2f} ms)", flush=True)
+
+    channel = "chromium" if gpu == "hardware" else None
+    with Harness(gpu=gpu, headless=True, channel=channel) as h:  # type: ignore[arg-type]
+        print(f"still {file.name} at t={t:.2f}s  {width}x{height}  {spp} spp  quality {quality}  "
+              f"renderer={h.info()['renderer']}", flush=True)
+        try:
+            res = render_still(h, payload, t=t, width=width, height=height, spp=spp, tile=tile,
+                               quality=quality, on_tile=progress)
+        except CompileFailed as e:
+            print("Compile errors:")
+            for err in e.errors:
+                print(err[:2000])
+            raise typer.Exit(1) from None
+        except Exception as e:  # noqa: BLE001 - errore del browser (es. scena retro): messaggio, non traceback
+            print(f"Error: {str(e).splitlines()[0][:500]}")
+            raise typer.Exit(1) from None
+    out.mkdir(parents=True, exist_ok=True)
+    stem = f"still_{file.stem}_{width}x{height}_{spp}spp_q{quality:g}_t{t:g}"
+    png = out / f"{stem}.png"
+    Image.fromarray(res.image).save(png)
+    summary = res.summary()
+    (out / f"{stem}.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
+    for w in res.warnings:
+        print(f"  warning: {w}")
+    print(f"done in {summary['wall_ms'] / 1000:.1f} s (GPU {summary['gpu_ms'] / 1000:.1f} s, "
+          f"slowest sample {summary['ms_per_tile_sample_max']:.2f} ms) -> {png}")
+
+
+@app.command()
 def init(
     out: Path = typer.Option(Path("demogen.yaml"), help="Local config to create (gitignored)"),
 ) -> None:

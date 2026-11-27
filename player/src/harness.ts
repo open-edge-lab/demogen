@@ -3,13 +3,15 @@
 
 import { AudioEngine } from "./audio";
 import { Player } from "./player";
-import { parsePayload } from "./format";
+import { DemoPayload, parsePayload } from "./format";
 import { createGL, rendererInfo, DemogenInfo } from "./gl";
+import { renderStillTile, StillTile, StillTileOpts } from "./still";
 import { stateAt } from "./timeline";
 
 interface HarnessPlayer {
   player: Player;
   canvas: HTMLCanvasElement;
+  payload: DemoPayload;
 }
 
 let current: HarnessPlayer | null = null;
@@ -36,7 +38,7 @@ async function load(payload: unknown): Promise<{ ok: boolean; errors: string[]; 
     const player = new Player(canvas, p, { preserveDrawingBuffer: true, autoPlay: false, autoResize: false });
     const t0 = performance.now();
     await player.load();
-    current = { player, canvas };
+    current = { player, canvas, payload: p };
     return { ok: true, errors, compile_ms: player.compileMs || performance.now() - t0 };
   } catch (e) {
     errors.push(String(e));
@@ -212,6 +214,12 @@ function profile(opts: {
   return { method: ext ? "timer_query" : "readpixels", samples };
 }
 
+/** Un tile di un'immagine fissa: campioni sub-pixel sommati in float (vedi still.ts). */
+function stillTile(opts: StillTileOpts): StillTile {
+  if (!current) throw new Error("call load() first");
+  return renderStillTile(current.player, current.payload, opts);
+}
+
 function info(): DemogenInfo {
   if (current) return current.player.info;
   // primo contesto del canvas: con preserveDrawingBuffer, come lo vorrà il Player (gli
@@ -266,5 +274,7 @@ function renderAudioB64(opts: { t0: number; blocks: number }): { sr: number; ms:
   return { sr: a.sampleRateHz, ms, data: btoa(bin) };
 }
 
-const api = { load, capture, cellSequence, cellSequenceB64, stats, profile, info, state, renderAudio, renderAudioB64 };
+const api = {
+  load, capture, cellSequence, cellSequenceB64, stats, profile, info, state, renderAudio, renderAudioB64, stillTile,
+};
 (window as unknown as { __demogen: typeof api }).__demogen = api;

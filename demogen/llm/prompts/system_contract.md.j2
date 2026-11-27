@@ -26,7 +26,7 @@ uniform float uBeatPhase;     // fract(uBeat)
 uniform float uBar;           // bars (float)
 uniform float uQuality;       // 0 = min, 1 = full (continuous)
 uniform float uFlashLimit;    // 1 = normal, < 1 with reduce-flashes
-uniform vec2  uJitter;        // 0 in realtime
+uniform vec2  uJitter;        // already added to fragCoord by the player: never use it
 #define BPM {{ bpm }}
 #define PROFILE_RETRO         // only for retro-profile scenes
 ```

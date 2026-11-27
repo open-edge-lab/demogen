@@ -103,6 +103,11 @@ class Harness:
             {"times": times, "width": width, "height": height},
         )
 
+    def still_tile(self, opts: dict[str, Any]) -> dict[str, Any]:
+        """Un tile di un'immagine fissa (vedi player/src/still.ts): RGB 8 bit base64, righe dal basso,
+        più i ms spesi (totale e campione più lento)."""
+        return self.page.evaluate("(o) => window.__demogen.stillTile(o)", opts)
+
     def render_audio_array(self, t0: float, blocks: int):
         """Blocchi audio da t0 come ndarray float32 stereo interleaved, con frequenza di campionamento
         e ms spesi a calcolarli nel browser (senza il trasferimento). → (x, sr, ms)."""

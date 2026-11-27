@@ -158,6 +158,8 @@ uv run demogen inspect examples/timeline.json     # metrics + gates + sheets in 
 uv run demogen bundle examples/timeline.json --out out   # .demo + .html from a hand-written timeline
 uv run demogen probe examples/timeline.json --gpu swiftshader
 uv run demogen calibrate --gpu hardware           # ms of the 4 example shaders (informational)
+uv run demogen still examples/shaders/terrain.glsl --gpu hardware --width 7680 --height 4320 --spp 16
+                                                  # experimental: one high-resolution PNG (tiles + sub-pixel samples)
 ```
 
 Ready-made examples in `examples/web/` open with a double click, for instance `whisker-hunt.html`
@@ -366,6 +368,8 @@ uv run demogen inspect examples/timeline.json     # metriche + gate + fogli in o
 uv run demogen bundle examples/timeline.json --out out   # .demo + .html da una timeline scritta a mano
 uv run demogen probe examples/timeline.json --gpu swiftshader
 uv run demogen calibrate --gpu hardware           # ms dei 4 shader di esempio (informativo)
+uv run demogen still examples/shaders/terrain.glsl --gpu hardware --width 7680 --height 4320 --spp 16
+                                                  # sperimentale: un PNG ad alta risoluzione (tile + campioni sub-pixel)
 ```
 
 Esempi pronti in `examples/web/`, da aprire con un doppio click: per esempio `whisker-hunt.html`

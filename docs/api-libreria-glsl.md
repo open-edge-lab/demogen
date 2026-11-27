@@ -31,7 +31,6 @@ mat3 lookAt(vec3 eye, vec3 target, float roll) {
 ### `rayDir`
 
 raggio dalla camera: uv in [-1,1] (aspect-corretti), fov in radianti.
-uJitter è 0 in realtime (solo export offline).
 
 ```glsl
 vec3 rayDir(vec2 uv, vec3 ro, mat3 basis, float fov) {

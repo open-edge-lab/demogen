@@ -14,6 +14,10 @@ export interface RenderEnv {
   uFlashLimit: number;
   text: Int32Array;
   textLen: number;
+  /** Solo immagini fisse a tile: iResolution dell'immagine intera e offset di fragCoord in pixel
+   *  (angolo del tile + jitter sub-pixel). Assenti in realtime. */
+  res?: [number, number];
+  jitter?: [number, number];
 }
 
 const PASS_VERT = `#version 300 es
@@ -122,7 +126,9 @@ export class Compositor {
     gl.viewport(0, 0, target.width, target.height);
     gl.useProgram(cp.prog);
     const L = cp.loc;
-    gl.uniform3f(L.iResolution, target.width, target.height, 1);
+    const r = env.res ?? [target.width, target.height];
+    const j = env.jitter ?? [0, 0];
+    gl.uniform3f(L.iResolution, r[0], r[1], 1);
     gl.uniform1f(L.iTime, env.t);
     gl.uniform1f(L.uSceneTime, env.state.sceneTime);
     gl.uniform1f(L.uSceneProgress, env.state.sceneProgress);
@@ -131,7 +137,7 @@ export class Compositor {
     gl.uniform1f(L.uBar, env.state.bar);
     gl.uniform1f(L.uQuality, env.uQuality);
     gl.uniform1f(L.uFlashLimit, env.uFlashLimit);
-    gl.uniform2f(L.uJitter, 0, 0);
+    gl.uniform2f(L.uJitter, j[0], j[1]);
     if (L.uText) gl.uniform1iv(L.uText, env.text);
     if (L.uTextLen) gl.uniform1i(L.uTextLen, env.textLen);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
