@@ -1,5 +1,7 @@
 name: ci
-on: [push, pull_request]
+# Disattivata (2026-11-27): l'account GitHub dell'organizzazione è bloccato per un problema di fatturazione e i
+# job non partono. Si avvia solo a mano (Actions -> ci -> Run workflow); per riattivarla: on: [push, pull_request]
+on: workflow_dispatch
 jobs:
   test:
     runs-on: ubuntu-latest

@@ -37,7 +37,7 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - Testi visibili all'utente (CLI, pannello, menu, report, pagina del player, messaggi all'LLM) in **inglese**; commenti, docstring e guide in italiano. Il `README.md` ha due sezioni, English sopra e Italiano sotto: ogni modifica va fatta in entrambe
 - Libreria web: il player è esportato da `player/src/index.ts` — build ESM/IIFE/types con `npm run build --workspace player`; esempi in `examples/web/` (`index.html` demo, `8bit.html` embed 8bit zero-banda); doc `docs/player-web-library.md`
 - Rigenera vettori timeline: `uv run python scripts/gen_vectors.py`
-- Sito delle demo (GitHub Pages, https://open-edge-lab.github.io/demogen/): `npm run build && npm run site` → `out/site/` (`scripts/build-site.mts`: galleria `index.html` + pagine di `examples/web/`, `index.html` diventa `m1.html`, `../../player/dist/` → `player/`); lo pubblica `.github/workflows/pages.yml` a ogni push su main (Source: GitHub Actions nelle impostazioni del repo). Una pagina nuova in `examples/web/` va aggiunta a `CARDS` con titolo e descrizione (altrimenti finisce in fondo col solo `<title>`). `player/dist/` non si committa
+- Sito delle demo (GitHub Pages, https://open-edge-lab.github.io/demogen/): `npm run build && npm run site` → `out/site/` (`scripts/build-site.mts`: galleria `index.html` + pagine di `examples/web/`, `index.html` diventa `m1.html`, `../../player/dist/` → `player/`); lo pubblica `.github/workflows/pages.yml`, solo a mano (Actions → pages → Run workflow; Source: GitHub Actions nelle impostazioni del repo). Una pagina nuova in `examples/web/` va aggiunta a `CARDS` con titolo e descrizione (altrimenti finisce in fondo col solo `<title>`). `player/dist/` non si committa
 
 ## Convenzioni
 
@@ -47,4 +47,5 @@ Motore di rendering **realtime interno** (player WebGL2 nostro), dual-mode: GPU 
 - Nessuna chiamata API reale nei test standard (`@pytest.mark.live`); perf su GPU reale solo locale (`@pytest.mark.perf`).
 - Le pagine pilotate da Playwright hanno la rete esterna bloccata (solo 127.0.0.1 servito).
 - Al termine di ogni fase: test verdi, commit `phase N: <sintesi>`, aggiorna le checkbox qui e in `docs/piano-esecuzione.md`.
+- CI/CD disattivata dal 2026-11-27 (account GitHub dell'organizzazione bloccato per fatturazione, i job non partono): `ci.yml` e `pages.yml` hanno solo `workflow_dispatch`; i test si lanciano in locale (`uv run pytest`, `npm test --workspace player`). Per riattivarle: trigger originali nei commenti dei due file
 - Repo remoto: `origin` = https://github.com/open-edge-lab/demogen.git (pubblico). **Mai committare file sensibili**: `.gitignore` esclude `demogen.yaml` (config locale con chiave), `.env*`, `*.pem/key/p12/pfx`, `id_rsa*`, `secrets/`, `*credentials*`, `llm_calls/`, `*.log`. Prima di ogni push scansiona la history per pattern di chiavi (`sk-…`, `ghp_…`, `AKIA…`, `BEGIN … PRIVATE KEY`).

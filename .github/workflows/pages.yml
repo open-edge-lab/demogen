@@ -1,10 +1,12 @@
 name: pages
 # Sito delle demo su GitHub Pages: player compilato + pagine di examples/web + galleria (scripts/build-site.mts).
 # Una tantum, nelle impostazioni del repo: Settings -> Pages -> Source: GitHub Actions.
+# Avvio automatico disattivato (2026-11-27, account bloccato per fatturazione): solo a mano, Actions -> pages ->
+# Run workflow. Per riattivarlo, aggiungere sotto on:
+#   push:
+#     branches: [main]
+#     paths: [examples/web/**, player/**, scripts/build-site.mts, package.json, .github/workflows/pages.yml]
 on:
-  push:
-    branches: [main]
-    paths: [examples/web/**, player/**, scripts/build-site.mts, package.json, .github/workflows/pages.yml]
   workflow_dispatch:
 permissions:
   contents: read

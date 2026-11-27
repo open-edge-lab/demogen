@@ -177,8 +177,9 @@ intruder's face) and the slow return, 85 s seamless loop, flash gate at 2/s; its
 with `demogen still` at 8K shows the phosphor stripes and the zone plates that 1080p cannot resolve.
 `play` and `inspect` on a single shader of a timeline use that timeline's common code, text and style.
 
-The same pages are online at <https://open-edge-lab.github.io/demogen/>: on every push to `main` that
-touches them, `.github/workflows/pages.yml` builds the player, assembles the site with `npm run site`
+The same pages are meant to be online at <https://open-edge-lab.github.io/demogen/>:
+`.github/workflows/pages.yml`, started by hand (Actions → pages → Run workflow; automatic runs on push are
+off for now, like the CI), builds the player, assembles the site with `npm run site`
 (`scripts/build-site.mts`: a gallery plus the pages, into `out/site/`) and publishes it on GitHub Pages.
 `player/dist/` stays out of the repository; to use the player in your own page without building it, load
 `https://open-edge-lab.github.io/demogen/player/demogen-player.min.js` (or `demogen-player.esm.js`).
@@ -403,8 +404,9 @@ scena resa con `demogen still` in 8K mostra le strisce dei fosfori e i zone plat
 vedono. `play` e `inspect` su un singolo shader di una timeline usano common, testo e stile di quella
 timeline.
 
-Le stesse pagine sono online su <https://open-edge-lab.github.io/demogen/>: a ogni push su `main` che le
-tocca, `.github/workflows/pages.yml` compila il player, monta il sito con `npm run site`
+Le stesse pagine sono pensate per stare online su <https://open-edge-lab.github.io/demogen/>:
+`.github/workflows/pages.yml`, avviato a mano (Actions → pages → Run workflow; l'avvio automatico al push per
+ora è spento, come la CI), compila il player, monta il sito con `npm run site`
 (`scripts/build-site.mts`: una galleria più le pagine, in `out/site/`) e lo pubblica su GitHub Pages.
 `player/dist/` resta fuori dal repository; per usare il player in una pagina tua senza compilarlo, carica
 `https://open-edge-lab.github.io/demogen/player/demogen-player.min.js` (o `demogen-player.esm.js`).
