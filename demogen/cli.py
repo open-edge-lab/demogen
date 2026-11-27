@@ -195,11 +195,11 @@ def still(
     gpu: str = typer.Option("swiftshader", help="hardware | swiftshader"),
     out: Path = typer.Option(Path("out"), help="Output folder"),
 ) -> None:
-    """Render a single high-resolution image (tiles + sub-pixel samples) and save it as PNG."""
+    """Render a single high-resolution image (tiles + sub-pixel samples, bloom, image gates) and save it as PNG."""
     from PIL import Image
 
     from .browser.harness import Harness
-    from .engine import CompileFailed
+    from .engine import CompileFailed, default_config
     from .still import render_still, validate_still_args
 
     try:
@@ -220,7 +220,7 @@ def still(
               f"renderer={h.info()['renderer']}", flush=True)
         try:
             res = render_still(h, payload, t=t, width=width, height=height, spp=spp, tile=tile,
-                               quality=quality, on_tile=progress)
+                               quality=quality, on_tile=progress, cfg=default_config())
         except CompileFailed as e:
             print("Compile errors:")
             for err in e.errors:
@@ -237,6 +237,9 @@ def still(
     (out / f"{stem}.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     for w in res.warnings:
         print(f"  warning: {w}")
+    print(f"  gate:  {len(res.issues)} issue ({res.blockers} blocker)" + ("  bloom applied" if res.bloom else ""))
+    for i in res.issues:
+        print(f"    [{i.severity}] {i.description}")
     print(f"done in {summary['wall_ms'] / 1000:.1f} s (GPU {summary['gpu_ms'] / 1000:.1f} s, "
           f"slowest sample {summary['ms_per_tile_sample_max']:.2f} ms) -> {png}")
 

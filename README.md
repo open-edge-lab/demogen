@@ -188,6 +188,7 @@ No LLM runs on the demogen side, so there are no keys and no spending.
 | `glsl_library` | the library functions a scene can call without defining them (`query` filters) |
 | `validate` | compiles in the real player; errors come back as `file:line: message` |
 | `render` | frames at the given times, returned as one image (PNGs saved under `out/mcp/`) |
+| `render_still` | one high-resolution image (tiles + sub-pixel samples, bloom, image gates): preview and a 1:1 crop |
 | `inspect` | the gates of the pipeline: NaN, black, flicker, loop seam, WCAG flashes, perf, size |
 | `verify_math` | the math oracle: verified formulas (SDF, Lipschitz, period, easing) become GLSL |
 | `bundle` | `.demo` payload + standalone `.html` |
@@ -399,6 +400,7 @@ bundle. Dal lato di demogen non gira nessun LLM, quindi niente chiavi e niente s
 | `glsl_library` | le funzioni della libreria che una scena può chiamare senza definirle (`query` filtra) |
 | `validate` | compila nel player vero; gli errori tornano come `file:riga: messaggio` |
 | `render` | fotogrammi ai tempi chiesti, in un'unica immagine (i PNG restano in `out/mcp/`) |
+| `render_still` | un'immagine ad alta risoluzione (tile + campioni sub-pixel, bloom, gate): anteprima e ritaglio 1:1 |
 | `inspect` | i gate della pipeline: NaN, nero, sfarfallio, giunta del loop, flash WCAG, perf, dimensione |
 | `verify_math` | l'oracolo matematico: le formule verificate (SDF, Lipschitz, periodo, easing) diventano GLSL |
 | `bundle` | payload `.demo` + `.html` autonomo |

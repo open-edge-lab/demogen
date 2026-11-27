@@ -77,3 +77,32 @@ def test_invalid_arguments(args) -> None:
     with pytest.raises(ValueError):
         validate_still_args(*args)
 
+
+def test_bloom_glows_and_scales_with_resolution() -> None:
+    """Il bloom dello still: alone attorno alle zone chiare, raggio proporzionale all'altezza."""
+    from demogen.still import apply_bloom
+
+    def spread(h: int) -> float:
+        img = np.zeros((h, h * 16 // 9, 3), dtype=np.uint8)
+        c = h // 2
+        img[c - h // 20:c + h // 20, c - h // 20:c + h // 20] = 255  # quadrato bianco al centro
+        out = apply_bloom(img, threshold=0.8, intensity=0.5)
+        row = out[c, :, 1].astype(int)
+        lit = np.nonzero(row > 4)[0]
+        return (lit.max() - lit.min()) / h  # larghezza illuminata relativa all'altezza
+
+    s1, s2 = spread(540), spread(1080)
+    assert s1 > 0.1 + 0.01  # più largo del solo quadrato (0.1 dell'altezza): alone di ~0.009 per lato
+    assert abs(s2 - s1) < 0.01  # stesso alone relativo a risoluzione doppia
+    dark = np.full((90, 160, 3), 100, dtype=np.uint8)
+    assert np.array_equal(apply_bloom(dark, 0.8, 0.5), dark)  # sotto soglia non cambia niente
+
+
+def test_still_gates_on_the_final_image(harness, tmp_path) -> None:
+    black = tmp_path / "gates" / "src" / "black.glsl"
+    black.parent.mkdir(parents=True)
+    black.write_text("void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n"
+                     "    fragColor = vec4(0.0, 0.0, 0.0, 1.0);\n}\n", encoding="utf-8")
+    res = render_still(harness, payload_from_file(black), t=T, width=W, height=H, spp=1, tile=128)
+    assert res.blockers == 1 and "black" in res.issues[0].description
+    assert res.summary()["issues"][0]["severity"] == "blocker"

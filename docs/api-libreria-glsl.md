@@ -18,6 +18,16 @@ smoothstep con bordi filtrati.
 float aaSmoothstep(float e0, float e1, float x) {
 ```
 
+### `detailFade`
+
+0..1: quanto mostrare un dettaglio periodico la cui lunghezza d'onda è `wavePx` pixel (1 sopra
+4 px, 0 sotto 2 px): righe fini, reticoli, maschere e ottave svaniscono invece di fare moiré, e
+ricompaiono da sole a risoluzione più alta. Con coordinate p: detailFade(1.0 / (freq * fwidth(p.x))).
+
+```glsl
+float detailFade(float wavePx) {
+```
+
 ## `camera.glsl`
 
 ### `lookAt`
@@ -146,6 +156,17 @@ fractal Brownian motion 2D in [-1,1]; ottave scalate da uQuality (qOctaves).
 
 ```glsl
 float fbm(vec2 p) {
+```
+
+### `fbmPx`
+
+fbm 2D in [-1,1] con le ottave fino al limite del pixel: `px` = unità di p per pixel (per esempio
+scala / iResolution.y, o fwidth(p.x)). Ogni ottava entra finché la sua onda è più larga di ~2 pixel
+(detailFade): più risoluzione = più ottave = dettaglio vero, mai aliasing. Uguale a fbm nelle prime
+ottave; al più 16, scalate da uQuality (qOctaves).
+
+```glsl
+float fbmPx(vec2 p, float px) {
 ```
 
 ### `ridged`

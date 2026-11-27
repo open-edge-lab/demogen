@@ -42,6 +42,8 @@ If the payload has `text`: `uniform highp int uText[64]; uniform int uTextLen;` 
   `int n = qSteps(MAX_STEPS); for (int i = 0; i < MAX_STEPS; i++) { if (i >= n) break; ... }`
 - No deeply nested loops or big local arrays (slow to compile on ANGLE→D3D).
 - Use `fwidth`-based AA helpers from `aa.glsl` where needed.
+- Sizes (line widths, dots, glyphs, spacing) in image units (`fragCoord / iResolution.y`), not in pixels: the same frame plays from 320x180 up to 4K and is rendered as a still up to 8K. Pixels only for anti-aliasing widths (`fwidth`).
+- Detail that should grow with resolution (noise, textures, fine periodic patterns): `fbmPx(p, px)` (px = units of p per pixel) instead of a fixed octave count, and `detailFade(wavePx)` to fade any periodic pattern below 2 px instead of letting it alias.
 - Flashes/strobes only via library helpers that respect `uFlashLimit` (`beatFlash`). No full-screen strobe > 3 Hz.
 - Wrap time entering periodic functions with `time.glsl` helpers (fp32 precision on long runs).
 - Output in display space (sRGB) via `finalize(col, uv)` from the style. `finalize` RETURNS the color: mainImage must assign it, `fragColor = vec4(finalize(col, uv), 1.0);` (calling `finalize(col, uv);` alone writes nothing and the screen stays black).

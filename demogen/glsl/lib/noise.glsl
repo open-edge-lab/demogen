@@ -52,6 +52,28 @@ float fbm(vec2 p) {
     return sum / norm;
 }
 
+/// @fn fbmPx
+/// fbm 2D in [-1,1] con le ottave fino al limite del pixel: `px` = unità di p per pixel (per esempio
+/// scala / iResolution.y, o fwidth(p.x)). Ogni ottava entra finché la sua onda è più larga di ~2 pixel
+/// (detailFade): più risoluzione = più ottave = dettaglio vero, mai aliasing. Uguale a fbm nelle prime
+/// ottave; al più 16, scalate da uQuality (qOctaves).
+float fbmPx(vec2 p, float px) {
+    float amp = 0.5;
+    float sum = 0.0;
+    float f = 1.0;
+    int oct = qOctaves(16);
+    for (int i = 0; i < 16; i++) {
+        if (i >= oct) break;
+        float w = detailFade(1.0 / (f * px));
+        if (w <= 0.0) break;
+        sum += amp * w * vnoise(p);
+        p = p * 2.03 + vec2(11.7, 5.1);
+        f *= 2.03;
+        amp *= 0.5;
+    }
+    return sum;
+}
+
 /// @fn ridged
 /// ridged multifractal 2D in [0,1]-ish.
 float ridged(vec2 p) {

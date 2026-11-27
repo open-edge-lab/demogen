@@ -57,7 +57,8 @@ def test_agente_esterno_dal_codice_sbagliato_al_bundle(tmp_path: Path) -> None:
     async def agent() -> None:
         async with Client(server) as c:
             names = {t.name for t in (await c.list_tools()).tools}
-            assert names == {"guide", "glsl_library", "validate", "render", "inspect", "verify_math", "bundle"}
+            assert names == {"guide", "glsl_library", "validate", "render", "render_still", "inspect",
+                             "verify_math", "bundle"}
 
             # errore con file e riga della scena (non del fragment intero)
             res = json.loads(_text(await c.call_tool("validate", {"path": "demo.timeline.json"})))
@@ -73,6 +74,16 @@ def test_agente_esterno_dal_codice_sbagliato_al_bundle(tmp_path: Path) -> None:
             assert not res.is_error and len(_images(res)) == 1 and _images(res)[0].mime_type == "image/jpeg"
             assert sorted(p.name for p in (tmp_path / "out" / "mcp" / "render_s1").iterdir()) == \
                 ["t0.5s.png", "t2s.png"]
+
+            # immagine fissa: PNG e riepilogo su disco, anteprima intera + ritaglio 1:1, gate
+            res = await c.call_tool("render_still", {"path": "shaders/s1.glsl", "time": 1.0, "width": 200,
+                                                     "height": 120, "spp": 2, "tile": 64, "crop": [0.9, 0.1]})
+            summary = json.loads(_text(res))
+            assert not res.is_error and len(_images(res)) == 2, _text(res)
+            assert summary["tiles"] == 8 and summary["issues"] == [] and summary["crop_box"] == [0, 0, 200, 120]
+            assert (tmp_path / summary["png"]).exists()
+            res = await c.call_tool("render_still", {"path": "shaders/s1.glsl", "spp": 0})
+            assert res.is_error and "spp" in _text(res)
 
             res = await c.call_tool("inspect", {"path": "demo.timeline.json", "frames": 4})
             summary = json.loads(_text(res))

@@ -33,6 +33,8 @@ from .bundle.build import build_payload, build_payload_from_sources, write_bundl
 from .engine import CompileFailed, default_config, inspect_payload, owning_timeline, payload_from_file
 from .glsl.docs import generate_api_reference
 from .glsl.treeshake import load_library, treeshake
+from .still import render_still as render_still_image
+from .still import validate_still_args
 
 REPO = Path(__file__).resolve().parents[1]
 EXAMPLES = REPO / "examples"
@@ -327,6 +329,7 @@ pipeline uses, and bundle the result. No LLM runs on the demogen side.
    GLSL file per scene. Start from an example: {examples}.
 3. `validate` until it compiles (errors come back as `file:line: message`).
 4. `render` to look at frames, `inspect` for the gates (NaN, black, flicker, loop seam, flashes, perf).
+   `render_still` for one high-resolution image (up to 8K and beyond: tiles + sub-pixel samples).
 5. `verify_math` for formulas whose correctness matters (exact SDF, Lipschitz bound, period, easing).
 6. `bundle` → `.demo` payload + standalone `.html`.
 
@@ -499,6 +502,58 @@ def build_server(root: Path, gpu: str = "hardware", out: Path | None = None) -> 
         cols = 1 if len(pngs) == 1 else (2 if width >= height else 4)
         summary = f"{len(pngs)} frames at {width}x{height}, duration {duration:g} s; saved in {ws.rel(d)}/"
         return [summary, preview_image(frame_sheet(pngs, ts, cols))]
+
+    @server.tool(structured_output=False)
+    def render_still(path: str = "", shader: str = "", style: str = "", time: float | None = None,
+                     width: int = 3840, height: int = 2160, spp: int = 16, tile: int = 1024,
+                     quality: float = 1.0, crop: list[float] | None = None, profile: str = "modern",
+                     seconds: float = 8.0) -> list:
+        """Render one high-resolution still image (tiles + sub-pixel samples summed in float, the player's
+        bloom on the whole image, then the image gates: NaN/Inf, black). The PNG and its summary are saved
+        under out/mcp/still_<name>/.
+
+        Returns the summary (time, slowest sample against the GPU watchdog, issues), a preview of the
+        whole image and a 1:1 crop of 1280x720 full-resolution pixels centered at `crop` = [x, y]
+        (fractions from the top-left; default the center) to judge fine detail. `time` in seconds
+        (default: the middle of the duration); `spp` = samples per pixel (anti-aliasing); `quality`
+        above 1 lets qSteps/qOctaves grow where loop bounds allow. Modern profile only. Source as in
+        `validate`; with `shader`, `seconds` is the length of the loop."""
+        payload, name = source_payload(path, shader, style, seconds, profile)
+        try:
+            validate_still_args(width, height, spp, tile, quality)
+        except ValueError as e:
+            raise ToolError(str(e)) from None
+        duration = float(payload["meta"]["duration_s"])
+        t = duration / 2 if time is None else float(time)
+        cx, cy = (crop[0], crop[1]) if crop and len(crop) >= 2 else (0.5, 0.5)
+
+        def work(h):
+            try:
+                return render_still_image(h, payload, t=t, width=width, height=height, spp=spp, tile=tile,
+                                          quality=quality, cfg=default_config())
+            except CompileFailed as e:
+                raise ToolError("does not compile:\n" + "\n".join(parse_errors(e.errors, path or "(shader)",
+                                                                                "(style)"))) from None
+
+        try:
+            res = renderer.run(work)
+        except ToolError:
+            raise
+        except Exception as e:  # noqa: BLE001 - dal browser (scena retro, contesto perso): il messaggio basta
+            raise ToolError(str(e).strip().splitlines()[-1][:500]) from None
+        d = ws.out_dir(f"still_{name}")
+        stem = f"{width}x{height}_{spp}spp_t{res.t:g}"
+        full = PILImage.fromarray(res.image)
+        full.save(d / f"{stem}.png")
+        summary = res.summary()
+        (d / f"{stem}.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
+        cw, ch = min(1280, width), min(720, height)
+        x0 = int(min(max(float(cx) * width - cw / 2, 0), width - cw))
+        y0 = int(min(max(float(cy) * height - ch / 2, 0), height - ch))
+        summary["png"] = f"{ws.rel(d)}/{stem}.png"
+        summary["crop_box"] = [x0, y0, x0 + cw, y0 + ch]
+        return [json.dumps(summary, indent=1), preview_image(full),
+                preview_image(full.crop((x0, y0, x0 + cw, y0 + ch)))]
 
     @server.tool(structured_output=False)
     def inspect(path: str = "", shader: str = "", style: str = "", profile: str = "modern",
